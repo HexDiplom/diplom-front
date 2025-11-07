@@ -6,15 +6,15 @@ import "./index.css";
 import App from "./App.tsx";
 
 const router = createBrowserRouter([
-	{
-		path: "/",
-		element: <App />,
-	},
+  {
+    path: "/",
+    element: <App />,
+  },
 ]);
 
 // biome-ignore lint/style/noNonNullAssertion: Необходимо для TypeScript
 createRoot(document.getElementById("root")!).render(
-	<StrictMode>
-		<RouterProvider router={router} />
-	</StrictMode>,
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
 );
