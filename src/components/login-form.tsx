@@ -9,17 +9,63 @@ import {
   FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { Link } from "react-router"
+import { Link, useLocation, useNavigate } from "react-router"
+import { useMemo, useState } from "react"
+import { authClient } from "@/lib/auth-client"
+import { toast } from "sonner"
+import { getAuthErrorMessage } from "@/lib/auth-errors"
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const backgroundImage = useMemo(() => getRandomBackgroundImage(), [])
+
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+
+  const from = location.state?.from?.pathname || "/"
+
+  async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!username.trim()) {
+      toast.error("Введите логин")
+      return
+    }
+
+    if (!password) {
+      toast.error("Введите пароль")
+      return
+    }
+
+    setIsLoading(true)
+
+    const { error } = await authClient.signIn.username({
+      username,
+      password
+    })
+
+    setIsLoading(false)
+
+    if (error) {
+      toast.error(getAuthErrorMessage(error.code, error.message))
+      return
+    }
+
+    toast.success("Успешная авторизация!")
+    navigate(from, { replace: true })
+  }
+
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card className="overflow-hidden p-0">
         <CardContent className="grid p-0 md:grid-cols-2">
-          <form className="p-6 md:p-8">
+          <form onSubmit={handleSubmit} className="p-6 md:p-8">
             <FieldGroup>
               <div className="flex flex-col items-center gap-2 text-center">
                 <h1 className="text-2xl font-bold">Авторизация</h1>
@@ -28,11 +74,13 @@ export function LoginForm({
                 </p>
               </div>
               <Field>
-                <FieldLabel htmlFor="email">Email</FieldLabel>
+                <FieldLabel htmlFor="username">Логин</FieldLabel>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
+                  id="username"
+                  type="username"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
                   required
                 />
               </Field>
@@ -46,10 +94,16 @@ export function LoginForm({
                     Забыли пароль?
                   </a>
                 </div>
-                <Input id="password" type="password" required />
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required                />
               </Field>
               <Field>
-                <Button type="submit">Войти</Button>
+                <Button type="submit" disabled={isLoading}>{isLoading ? "Вход..." : "Войти"}</Button>
               </Field>
               <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
                 или
@@ -81,7 +135,7 @@ export function LoginForm({
           </form>
           <div className="relative hidden bg-muted md:block">
             <img
-              src={getRandomBackgroundImage()}
+              src={backgroundImage}
               alt="Image"
               className="absolute inset-0 h-full w-full object-cover dark:brightness-[0.7]"
             />
