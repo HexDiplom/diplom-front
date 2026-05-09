@@ -11,23 +11,28 @@ import { SignupForm } from '@/components/signup-form'
 import { Toaster } from '@/components/ui/sonner'
 import Home from './pages/home'
 import { RootLayout } from './layouts/root-layout'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+const queryClient = new QueryClient()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
-      <BrowserRouter>
-        <Routes>
-          <Route element={<RootLayout />}>
-            <Route index element={<Home />}/>
-          </Route>
-          <Route path="auth" element={<Auth />}>
-            <Route index element={<Navigate to="login" replace />} />
-            <Route path="login" element={<LoginForm />} />
-            <Route path="signup" element={<SignupForm />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-      <Toaster />
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
+        <BrowserRouter>
+          <Routes>
+            <Route element={<RootLayout />}>
+              <Route index element={<Home />}/>
+            </Route>
+            <Route path="auth" element={<Auth />}>
+              <Route index element={<Navigate to="login" replace />} />
+              <Route path="login" element={<LoginForm />} />
+              <Route path="signup" element={<SignupForm />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+        <Toaster />
+      </ThemeProvider>
+    </QueryClientProvider>
   </StrictMode>,
 )
