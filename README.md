@@ -1,73 +1,81 @@
-# React + TypeScript + Vite
+# Фронтенд
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## Стек разработки
 
-Currently, two official plugins are available:
+- [NodeJS 24](https://nodejs.org/) - JavaScript рантайм
+- [pnpm](https://pnpm.io/) - Пакетный медежер для NodeJS- 
+- [TypeScript](https://www.typescriptlang.org/) - Основной язык разработки выбранный для фронтенда
+- [Vite](https://vite.dev/) - Инструмент для сборки и разработки веб приложений на TypeScript
+- [React](https://react.dev/) - Библиотека (Фреймворк) для создания пользовательский интерфейсов с реактивным обновлением
+- [TanStack Query](https://tanstack.com/query/latest) - Библиотека для сохранения состояний после получения данных с сервера
+- [react-router](https://reactrouter.com/) - Библиотека для React для создания навигации у одностраничных (SPA) приложений на React
+- [TailwindCSS](https://tailwindcss.com/) - CSS Фреймворк упрощающий работу со стилями
+- [shadcn/ui](https://ui.shadcn.com/) - Бесплатная библиотке компонентов для React
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Установка и запуск
 
-## React Compiler
+1. Убедитесь что у вас включен pnpm
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm -v # 11.0.9
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Если pnpm выключен, включите corepack, он должен быть предустановлен вместе с NodeJS, после включения corepack pnpm должен заработать
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+corepack enable pnpm
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Если corepack не включается, проверьте установлена ли нода
+
+```bash
+node -v # v24.15.0
+```
+
+или установить node через fnm (можно поверх системной node)
+```bash
+# Download and install fnm:
+curl -o- https://fnm.vercel.app/install | bash
+
+# Download and install Node.js:
+fnm install 24
+
+# Use Node 24
+fnm use 24
+
+# Verify the Node.js version:
+node -v # Should print "v24.15.0".
+
+# Download and install pnpm:
+corepack enable pnpm
+
+# Verify pnpm version:
+pnpm -v
+```
+
+2. Установите зависимости
+
+```bash
+pnpm install
+```
+3. Скопируйте .env.example в .env, при необходимости можно поменять значение.
+
+```bash
+cp .env.example .env
+```
+
+4. Запустите проект
+
+```bash
+pnpm run dev
+```
+
+## Полезно
+
+```bash
+pnpm run dev # запуск проекта
+pnpm add имя_пакета # Добавить новый npm пакет
+pnpx shadcn@latest add имя_компонента # Добавить новый компонент shadcn/ui
+pnpm run build # собрать проект для прода
+pnpm run preview # запустить собранный проект в режиме preview (близкое к проду)
 ```
