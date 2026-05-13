@@ -35,6 +35,28 @@ export const ANIME_SOURCES = [
 ] as const
 export type AnimeSource = (typeof ANIME_SOURCES)[number]
 
+export const ANIME_SORT_FIELDS = [
+  "createdAt",
+  "updatedAt",
+  "startDate",
+  "endDate",
+  "seasonYear",
+  "episodes",
+  "duration",
+  "titleRussian",
+  "id",
+] as const
+export type AnimeSortBy = (typeof ANIME_SORT_FIELDS)[number]
+
+export type AnimeSortOrder = "asc" | "desc"
+
+export type AnimeListQueryParams = {
+  page?: number,
+  limit?: number,
+  sortBy?: AnimeSortBy,
+  sortOrder?: AnimeSortOrder,
+}
+
 export type AnimeTitle = {
   romaji: string,
   russian: string,
@@ -72,8 +94,26 @@ export type Anime = {
 }
 
 // Функция для получения списка аниме (будем использовать в TanStack Query)
-export async function getAnimeList(): Promise<Anime[]> {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/v1/anime`, {
+export async function getAnimeList(params?: AnimeListQueryParams): Promise<Anime[]> {
+  const url = new URL("/v1/anime", import.meta.env.VITE_API_URL)
+
+  if (params?.page !== undefined) {
+    url.searchParams.set("page", String(params.page))
+  }
+
+  if (params?.limit !== undefined) {
+    url.searchParams.set("limit", String(params.limit))
+  }
+
+  if (params?.sortBy !== undefined) {
+    url.searchParams.set("sortBy", params.sortBy)
+  }
+
+  if (params?.sortOrder !== undefined) {
+    url.searchParams.set("sortOrder", params.sortOrder)
+  }
+
+  const response = await fetch(url, {
     credentials: "include" // Отправляем куки чтобы сервер узнал нас
   })
 
