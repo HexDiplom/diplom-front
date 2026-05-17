@@ -65,6 +65,14 @@ export type AnimeTitle = {
   other?: string,
 }
 
+export type AnimeCoverImage = {
+  original?: string | null,
+  extraLarge?: string | null,
+  large?: string | null,
+  medium?: string | null,
+  color?: string | null,
+}
+
 // Тип который возвращает бекенд
 export type Anime = {
   id: number,
@@ -88,13 +96,27 @@ export type Anime = {
   tags?: string[],
   studioId?: number,
   isAdult?: boolean,
-  coverImage?: string,
+  coverImage?: AnimeCoverImage | null,
   createdAt: Date,
   updatedAt: Date,
 }
 
+export type AnimeListMeta = {
+  page: number,
+  limit: number,
+  total: number,
+  totalPages: number,
+  hasNextPage: boolean,
+  hasPrevPage: boolean,
+}
+
+export type AnimeListResponse = {
+  data: Anime[],
+  meta: AnimeListMeta,
+}
+
 // Функция для получения списка аниме (будем использовать в TanStack Query)
-export async function getAnimeList(params?: AnimeListQueryParams): Promise<Anime[]> {
+export async function getAnimeList(params?: AnimeListQueryParams): Promise<AnimeListResponse> {
   const url = new URL("/v1/anime", import.meta.env.VITE_API_URL)
 
   if (params?.page !== undefined) {
@@ -121,5 +143,5 @@ export async function getAnimeList(params?: AnimeListQueryParams): Promise<Anime
     throw new Error("Failed to fetch anime list")
   }
 
-  return response.json() as Promise<Anime[]> // Указываем что возвращать будет именно тип массив Anime
+  return response.json() as Promise<AnimeListResponse>
 }
