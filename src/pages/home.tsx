@@ -6,6 +6,8 @@ import { useInfiniteAnimeList } from "@/hooks/use-anime-list"
 
 const ANIME_PAGE_SIZE = 5
 
+import { AnimeCard } from "@/components/anime/anime-card"
+
 export default function Home() {
   const queryParams = useMemo(
     () => ({
