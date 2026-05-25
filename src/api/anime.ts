@@ -10,10 +10,12 @@ export type AnimeStatus = (typeof ANIME_STATUSES)[number]
 
 export const ANIME_FORMATS = [
   "TV",
+  "TV_SHORT",
   "MOVIE",
+  "SPECIAL",
   "OVA",
   "ONA",
-  "SPECIAL",
+  "OTHER",
 ] as const
 export type AnimeFormat = (typeof ANIME_FORMATS)[number]
 
@@ -62,7 +64,7 @@ export type AnimeTitle = {
   russian: string,
   native?: string,
   english?: string,
-  other?: string,
+  other?: string[],
 }
 
 export type AnimeCoverImage = {
@@ -91,7 +93,7 @@ export type Anime = {
   episodes?: number,
   duration?: number,
   source?: AnimeSource,
-  bannerImage?: string,
+  bannerImage?: string | null,
   genres?: string[],
   tags?: string[],
   studioId?: number,
