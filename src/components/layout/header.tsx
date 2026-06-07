@@ -5,6 +5,7 @@ import { Menu } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { authClient } from "@/lib/auth-client"
+import { isAdminUser } from "@/lib/admin-auth"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -39,11 +40,17 @@ const navItems = [
   },
 ]
 
+const adminNavItem = {
+  title: "Админ-панель",
+  to: "/admin",
+}
+
 export default function Header() {
   const navigate = useNavigate()
   const { data: session, isPending } = authClient.useSession()
 
   const user = session?.user
+  const visibleNavItems = isAdminUser(user) ? [...navItems, adminNavItem] : navItems
 
   async function handleLogout() {
     await authClient.signOut()
@@ -59,7 +66,7 @@ export default function Header() {
           </Link>
 
           <nav className="hidden items-center gap-1 md:flex">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
@@ -102,6 +109,7 @@ export default function Header() {
         <div className="md:hidden">
           <MobileMenu
             user={user}
+            navItems={visibleNavItems}
             isPending={isPending}
             onLogout={handleLogout}
           />
@@ -168,6 +176,10 @@ function UserMenu({ email, name, image, onLogout }: UserMenuProps) {
 }
 
 type MobileMenuProps = {
+  navItems: Array<{
+    title: string
+    to: string
+  }>
   user: {
     email?: string | null
     name?: string | null
@@ -178,7 +190,7 @@ type MobileMenuProps = {
   onLogout: () => void
 }
 
-function MobileMenu({ user, isPending, onLogout }: MobileMenuProps) {
+function MobileMenu({ navItems, user, isPending, onLogout }: MobileMenuProps) {
   return (
     <Sheet>
       <SheetTrigger asChild>
