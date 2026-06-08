@@ -23,6 +23,7 @@
     "react-dom": "^19.2.5",
     "react-router": "^7.15.0",
     "shadcn": "^4.7.0",
+    "shaka-player": "^5.1.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.4",

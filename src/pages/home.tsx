@@ -1,4 +1,5 @@
 import { useMemo } from "react"
+import { Link } from "react-router"
 
 import type { Anime } from "@/api/anime"
 import { Button } from "@/components/ui/button"
@@ -102,9 +103,9 @@ function AnimeCard({ anime }: { anime: Anime }) {
   const genres = anime.genres?.slice(0, 3) ?? []
 
   return (
-    <article
+    <Link
+      to={`/anime/${anime.id}`}
       className="group -m-1.5 min-w-0 cursor-pointer rounded-xl p-1.5 outline-none"
-      tabIndex={0}
     >
       <div className="min-w-0 transition-transform duration-200 ease-out group-hover:scale-[1.03] group-focus-visible:scale-[1.03]">
         <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-chart-2 shadow-sm transition-shadow duration-200 group-hover:shadow-xl group-focus-visible:shadow-xl">
@@ -162,7 +163,7 @@ function AnimeCard({ anime }: { anime: Anime }) {
           </div>
         </div>
       </div>
-    </article>
+    </Link>
   )
 }
 
@@ -176,7 +177,7 @@ function getAnimeTitle(anime: Anime) {
 }
 
 function getAnimeYear(anime: Anime) {
-  return anime.seasonYear || anime.startDateYear || anime.endDateYear
+  return anime.seasonYear || anime.startDateYear || anime.endDateYear || undefined
 }
 
 function getAnimeCoverImage(anime: Anime) {
