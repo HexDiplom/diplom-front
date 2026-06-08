@@ -1,6 +1,7 @@
 import { useState } from "react"
 
 import { adminApi, type Episode, type EpisodeCreatePayload, type EpisodeUpdatePayload } from "@/api/admin"
+import { AnimeSelector } from "@/components/admin/entity-selectors"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
 import { CheckboxField, NumberField, TextareaField, TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
@@ -46,11 +47,20 @@ export default function AdminEpisodesPage() {
       ]}
       defaultSortBy="id"
       filter={{
-        label: "Фильтр Anime ID",
+        label: "Фильтр по аниме",
         param: "animeId",
         value: animeIdFilter,
-        placeholder: "Например, 1",
+        placeholder: "Выберите аниме",
         onChange: setAnimeIdFilter,
+        render: ({ value, onChange }) => (
+          <AnimeSelector
+            label="Фильтр по аниме"
+            value={value}
+            onValueChange={onChange}
+            allowClear
+            placeholder="Все аниме"
+          />
+        ),
       }}
       columns={[
         { header: "ID", className: "w-36 text-muted-foreground", render: (item) => item.id },
@@ -87,8 +97,8 @@ export default function AdminEpisodesPage() {
 function EpisodeFormFields({ value, disabled, onChange }: ResourceFormProps<EpisodeForm>) {
   return (
     <>
-      <NumberField
-        label="Anime ID"
+      <AnimeSelector
+        label="Аниме"
         value={value.animeId}
         required
         disabled={disabled}

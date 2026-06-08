@@ -1,4 +1,7 @@
 import { useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { CheckCircle2, RotateCcw } from "lucide-react"
+import { toast } from "sonner"
 
 import {
   adminApi,
@@ -6,8 +9,11 @@ import {
   type EpisodeVideoCreatePayload,
   type EpisodeVideoUpdatePayload,
 } from "@/api/admin"
+import { EpisodeSelector } from "@/components/admin/entity-selectors"
+import { EpisodeVideoUploadForm } from "@/components/admin/episode-video-upload-form"
 import { TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
+import { Button } from "@/components/ui/button"
 import { formatDateTime, inputToNullableList, listToInput, nullableString, optionalString } from "@/lib/admin-form"
 
 type EpisodeVideoForm = {
@@ -29,51 +35,66 @@ const emptyEpisodeVideoForm: EpisodeVideoForm = {
 }
 
 export default function AdminEpisodeVideosPage() {
+  const queryClient = useQueryClient()
   const [episodeIdFilter, setEpisodeIdFilter] = useState("")
 
+  async function refreshVideos() {
+    await queryClient.invalidateQueries({ queryKey: ["admin-episode-videos"] })
+  }
+
   return (
-    <AdminResourcePage<EpisodeVideo, EpisodeVideoForm, EpisodeVideoCreatePayload, EpisodeVideoUpdatePayload>
-      resourceKey="admin-episode-videos"
-      title="Видео эпизодов"
-      description="CRUD для записей episode-video."
-      createLabel="Создать видео"
-      editLabel="Редактировать видео"
-      emptyText="Видео не найдены"
-      initialForm={emptyEpisodeVideoForm}
-      sortOptions={[
-        { label: "ID", value: "id" },
-        { label: "Episode ID", value: "episodeId" },
-        { label: "Озвучка", value: "voiceoverName" },
-        { label: "Статус", value: "status" },
-        { label: "Контейнер", value: "container" },
-      ]}
-      defaultSortBy="id"
-      filter={{
-        label: "Фильтр Episode ID",
-        param: "episodeId",
-        value: episodeIdFilter,
-        placeholder: "UUID эпизода",
-        onChange: setEpisodeIdFilter,
-      }}
-      columns={[
-        { header: "ID", className: "w-36 text-muted-foreground", render: (item) => item.id },
-        { header: "Episode ID", render: (item) => item.episodeId ?? "—" },
-        { header: "Manifest", render: (item) => item.manifestUrl ?? "—" },
-        { header: "Озвучка", render: (item) => item.voiceoverName || "—" },
-        { header: "Статус", render: (item) => item.status || "—" },
-        { header: "Обновлено", render: (item) => formatDateTime(item.updatedAt) },
-      ]}
-      getId={(item) => item.id}
-      getTitle={(item) => item.voiceoverName || `Video #${item.id}`}
-      list={adminApi.listEpisodeVideos}
-      create={adminApi.createEpisodeVideo}
-      update={adminApi.updateEpisodeVideo}
-      remove={adminApi.deleteEpisodeVideo}
-      toForm={toEpisodeVideoForm}
-      buildCreatePayload={buildEpisodeVideoCreatePayload}
-      buildUpdatePayload={buildEpisodeVideoUpdatePayload}
-      renderForm={(props) => <EpisodeVideoFormFields {...props} />}
-    />
+    <div className="grid gap-6">
+      <EpisodeVideoUploadForm onChanged={refreshVideos} />
+      <AdminResourcePage<EpisodeVideo, EpisodeVideoForm, EpisodeVideoCreatePayload, EpisodeVideoUpdatePayload>
+        resourceKey="admin-episode-videos"
+        title="Видео эпизодов"
+        description="CRUD для записей episode-video и управление обработкой."
+        createLabel="Создать видео вручную"
+        editLabel="Редактировать видео"
+        emptyText="Видео не найдены"
+        initialForm={emptyEpisodeVideoForm}
+        sortOptions={[
+          { label: "ID", value: "id" },
+          { label: "Episode ID", value: "episodeId" },
+          { label: "Озвучка", value: "voiceoverName" },
+          { label: "Статус", value: "status" },
+          { label: "Контейнер", value: "container" },
+        ]}
+        defaultSortBy="id"
+        filter={{
+          label: "Фильтр по эпизоду",
+          param: "episodeId",
+          value: episodeIdFilter,
+          placeholder: "Выберите эпизод",
+          onChange: setEpisodeIdFilter,
+          render: ({ value, onChange }) => (
+            <EpisodeSelector
+              value={value}
+              onValueChange={onChange}
+            />
+          ),
+        }}
+        columns={[
+          { header: "ID", className: "w-36 text-muted-foreground", render: (item) => item.id },
+          { header: "Episode ID", render: (item) => item.episodeId ?? "—" },
+          { header: "Manifest", render: (item) => item.manifestUrl ?? "—" },
+          { header: "Озвучка", render: (item) => item.voiceoverName || "—" },
+          { header: "Статус", render: renderVideoStatus },
+          { header: "Обновлено", render: (item) => formatDateTime(item.updatedAt) },
+        ]}
+        getId={(item) => item.id}
+        getTitle={(item) => item.voiceoverName || `Video #${item.id}`}
+        list={adminApi.listEpisodeVideos}
+        create={adminApi.createEpisodeVideo}
+        update={adminApi.updateEpisodeVideo}
+        remove={adminApi.deleteEpisodeVideo}
+        toForm={toEpisodeVideoForm}
+        buildCreatePayload={buildEpisodeVideoCreatePayload}
+        buildUpdatePayload={buildEpisodeVideoUpdatePayload}
+        renderForm={(props) => <EpisodeVideoFormFields {...props} />}
+        renderItemActions={(props) => <EpisodeVideoActions {...props} />}
+      />
+    </div>
   )
 }
 
@@ -84,8 +105,7 @@ function EpisodeVideoFormFields({
 }: ResourceFormProps<EpisodeVideoForm>) {
   return (
     <>
-      <TextField
-        label="Episode ID"
+      <EpisodeSelector
         value={value.episodeId}
         required
         disabled={disabled}
@@ -94,7 +114,6 @@ function EpisodeVideoFormFields({
       <TextField
         label="Manifest URL"
         value={value.manifestUrl}
-        required
         disabled={disabled}
         onValueChange={(manifestUrl) => onChange({ manifestUrl })}
       />
@@ -141,21 +160,86 @@ function toEpisodeVideoForm(item: EpisodeVideo): EpisodeVideoForm {
 function buildEpisodeVideoCreatePayload(form: EpisodeVideoForm): EpisodeVideoCreatePayload {
   return {
     episodeId: form.episodeId.trim(),
-    manifestUrl: form.manifestUrl.trim(),
+    manifestUrl: nullableString(form.manifestUrl),
     container: nullableString(form.container),
     availableResolutions: inputToNullableList(form.availableResolutions),
     voiceoverName: nullableString(form.voiceoverName),
-    status: nullableString(form.status),
+    status: optionalString(form.status),
   }
 }
 
 function buildEpisodeVideoUpdatePayload(form: EpisodeVideoForm): EpisodeVideoUpdatePayload {
   return {
     episodeId: optionalString(form.episodeId),
-    manifestUrl: optionalString(form.manifestUrl),
+    manifestUrl: nullableString(form.manifestUrl),
     container: nullableString(form.container),
     availableResolutions: inputToNullableList(form.availableResolutions),
     voiceoverName: nullableString(form.voiceoverName),
-    status: nullableString(form.status),
+    status: optionalString(form.status),
   }
+}
+
+function renderVideoStatus(item: EpisodeVideo) {
+  return (
+    <div className="grid max-w-48 gap-1">
+      <span>{item.status || "—"}</span>
+      {item.statusReason && (
+        <span className="line-clamp-2 text-xs text-destructive" title={item.statusReason}>
+          {item.statusReason}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function EpisodeVideoActions({
+  item,
+  disabled,
+  refresh,
+}: {
+  item: EpisodeVideo
+  disabled: boolean
+  refresh: () => void
+}) {
+  const [isPending, setIsPending] = useState(false)
+
+  if (item.status !== "UPLOADING" && item.status !== "QUEUE_FAILED") {
+    return null
+  }
+
+  async function runAction() {
+    setIsPending(true)
+
+    try {
+      if (item.status === "UPLOADING") {
+        await adminApi.completeEpisodeVideoUpload(item.id)
+        toast.success("Видео отправлено на обработку")
+      } else {
+        await adminApi.retryEpisodeVideoProcessing(item.id)
+        toast.success("Обработка запущена повторно")
+      }
+
+      await refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Не удалось выполнить действие")
+    } finally {
+      setIsPending(false)
+    }
+  }
+
+  const isCompleting = item.status === "UPLOADING"
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      title={isCompleting ? "Завершить загрузку" : "Повторить обработку"}
+      aria-label={isCompleting ? "Завершить загрузку" : "Повторить обработку"}
+      disabled={disabled || isPending}
+      onClick={runAction}
+    >
+      {isCompleting ? <CheckCircle2 className="size-4" /> : <RotateCcw className="size-4" />}
+    </Button>
+  )
 }

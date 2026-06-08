@@ -167,25 +167,65 @@ export type EpisodeUpdatePayload = Partial<EpisodeCreatePayload>
 export type EpisodeVideo = {
   id: string
   episodeId?: string
-  manifestUrl?: string
+  manifestUrl?: string | null
+  sourceBucket?: string | null
+  sourceKey?: string | null
+  outputBucket?: string | null
+  outputPrefix?: string | null
+  jobId?: string | null
   container?: string | null
   availableResolutions?: string[] | null
   voiceoverName?: string | null
   status?: string | null
+  statusReason?: string | null
   createdAt?: string
   updatedAt?: string
 }
 
 export type EpisodeVideoCreatePayload = {
   episodeId: string
-  manifestUrl: string
+  manifestUrl?: string | null
+  sourceBucket?: string | null
+  sourceKey?: string | null
+  outputBucket?: string | null
+  outputPrefix?: string | null
+  jobId?: string | null
   container?: string | null
   availableResolutions?: string[] | null
   voiceoverName?: string | null
-  status?: string | null
+  status?: string
+  statusReason?: string | null
 }
 
 export type EpisodeVideoUpdatePayload = Partial<EpisodeVideoCreatePayload>
+
+export type EpisodeVideoUploadPayload = {
+  episodeId: string
+  contentType: "video/mp4"
+  fileName?: string
+  fileSize?: number
+  voiceoverName?: string
+}
+
+export type EpisodeVideoPresignedUpload = {
+  method: "PUT"
+  url: string
+  headers: Record<string, string>
+  source: {
+    bucket: string
+    key: string
+  }
+}
+
+export type EpisodeVideoUploadResult = {
+  video: EpisodeVideo
+  upload: EpisodeVideoPresignedUpload
+}
+
+export type PresignedUploadOptions = {
+  signal?: AbortSignal
+  onProgress?: (progress: number) => void
+}
 
 export type AnimeTrailer = {
   id?: EntityId
@@ -306,6 +346,63 @@ function sendFile<T>(path: string, file: File) {
   })
 }
 
+export function uploadFileToPresignedUrl(
+  upload: EpisodeVideoPresignedUpload,
+  file: File,
+  options: PresignedUploadOptions = {},
+) {
+  if (options.signal?.aborted) {
+    return Promise.reject(new DOMException("File upload aborted", "AbortError"))
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest()
+
+    function handleAbort() {
+      request.abort()
+    }
+
+    function cleanup() {
+      options.signal?.removeEventListener("abort", handleAbort)
+    }
+
+    request.open(upload.method, upload.url)
+
+    Object.entries(upload.headers).forEach(([name, value]) => {
+      request.setRequestHeader(name, value)
+    })
+
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        options.onProgress?.(Math.round((event.loaded / event.total) * 100))
+      }
+    })
+
+    request.addEventListener("load", () => {
+      cleanup()
+
+      if (request.status >= 200 && request.status < 300) {
+        options.onProgress?.(100)
+        resolve()
+        return
+      }
+
+      reject(new Error(`File upload failed with status ${request.status}`))
+    })
+    request.addEventListener("error", () => {
+      cleanup()
+      reject(new Error("File upload failed"))
+    })
+    request.addEventListener("abort", () => {
+      cleanup()
+      reject(new DOMException("File upload aborted", "AbortError"))
+    })
+
+    options.signal?.addEventListener("abort", handleAbort, { once: true })
+    request.send(file)
+  })
+}
+
 function normalizeListResponse<T>(payload: unknown): AdminListResponse<T> {
   if (Array.isArray(payload)) {
     return {
@@ -398,8 +495,14 @@ export const adminApi = {
     getJson<EpisodeVideo>(`/v1/episode-video/${encodeId(id)}`),
   createEpisodeVideo: (payload: EpisodeVideoCreatePayload) =>
     sendJson<EpisodeVideo>("/v1/episode-video/", "POST", payload),
+  createEpisodeVideoUpload: (payload: EpisodeVideoUploadPayload) =>
+    sendJson<EpisodeVideoUploadResult>("/v1/episode-video/uploads", "POST", payload),
   updateEpisodeVideo: (id: EntityId, payload: EpisodeVideoUpdatePayload) =>
     sendJson<EpisodeVideo>(`/v1/episode-video/${encodeId(id)}`, "PUT", payload),
   deleteEpisodeVideo: (id: EntityId) =>
     sendJson<void>(`/v1/episode-video/${encodeId(id)}`, "DELETE"),
+  completeEpisodeVideoUpload: (id: EntityId) =>
+    sendJson<EpisodeVideo>(`/v1/episode-video/${encodeId(id)}/uploads/complete`, "POST"),
+  retryEpisodeVideoProcessing: (id: EntityId) =>
+    sendJson<EpisodeVideo>(`/v1/episode-video/${encodeId(id)}/process/retry`, "POST"),
 }

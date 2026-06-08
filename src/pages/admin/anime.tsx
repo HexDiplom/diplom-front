@@ -13,6 +13,7 @@ import {
   type AnimeUpdatePayload,
 } from "@/api/admin"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
+import { StudioSelector } from "@/components/admin/entity-selectors"
 import {
   CheckboxField,
   NumberField,
@@ -273,7 +274,14 @@ function AnimeFormFields({
           options={enumOptions(ADMIN_ANIME_SOURCES)}
           onValueChange={(source) => onChange({ source })}
         />
-        <NumberField label="Studio ID" value={value.studioId} disabled={disabled} onValueChange={(studioId) => onChange({ studioId })} />
+        <StudioSelector
+          label="Студия"
+          value={value.studioId}
+          disabled={disabled}
+          allowClear
+          placeholder="Без студии"
+          onValueChange={(studioId) => onChange({ studioId })}
+        />
         <TextField label="Жанры" description="Через запятую" value={value.genres} disabled={disabled} onValueChange={(genres) => onChange({ genres })} />
         <TextField label="Теги" description="Через запятую" value={value.tags} disabled={disabled} onValueChange={(tags) => onChange({ tags })} />
       </section>

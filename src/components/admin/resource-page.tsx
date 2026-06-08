@@ -45,6 +45,10 @@ type AdminResourcePageProps<TItem, TForm extends object, TCreatePayload, TUpdate
     value: string
     placeholder: string
     onChange: (value: string) => void
+    render?: (props: {
+      value: string
+      onChange: (value: string) => void
+    }) => ReactNode
   }
   columns: ResourceColumn<TItem>[]
   getId: (item: TItem) => EntityId
@@ -60,6 +64,11 @@ type AdminResourcePageProps<TItem, TForm extends object, TCreatePayload, TUpdate
   renderForm: (props: ResourceFormProps<TForm>) => ReactNode
   renderFormExtra?: (props: {
     editingItem: TItem | null
+    disabled: boolean
+    refresh: () => void
+  }) => ReactNode
+  renderItemActions?: (props: {
+    item: TItem
     disabled: boolean
     refresh: () => void
   }) => ReactNode
@@ -89,6 +98,7 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
   buildUpdatePayload,
   renderForm,
   renderFormExtra,
+  renderItemActions,
 }: AdminResourcePageProps<TItem, TForm, TCreatePayload, TUpdatePayload>) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<TForm>(initialForm)
@@ -216,14 +226,21 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
         <CardContent className="grid gap-4">
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_11rem_9rem]">
             {filter ? (
-              <div className="grid gap-2">
-                <Label>{filter.label}</Label>
-                <Input
-                  value={filter.value}
-                  placeholder={filter.placeholder}
-                  onChange={(event) => handleFilterChange(event.target.value)}
-                />
-              </div>
+              filter.render ? (
+                filter.render({
+                  value: filter.value,
+                  onChange: handleFilterChange,
+                })
+              ) : (
+                <div className="grid gap-2">
+                  <Label>{filter.label}</Label>
+                  <Input
+                    value={filter.value}
+                    placeholder={filter.placeholder}
+                    onChange={(event) => handleFilterChange(event.target.value)}
+                  />
+                </div>
+              )
             ) : (
               <div />
             )}
@@ -297,6 +314,11 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
                           ))}
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-2">
+                              {renderItemActions?.({
+                                item,
+                                disabled: deleteMutation.isPending,
+                                refresh: invalidate,
+                              })}
                               {detailsPath && (
                                 <Button asChild variant="ghost" size="icon-sm" aria-label="Открыть">
                                   <Link to={detailsPath(item)}>

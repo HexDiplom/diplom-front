@@ -155,6 +155,7 @@ export function CheckboxField({
 
 type FileInputProps = BaseFieldProps & {
   inputKey: number
+  accept?: string
   disabled?: boolean
   onFileChange: (file: File | null) => void
 }
@@ -164,6 +165,7 @@ export function FileInput({
   description,
   className,
   inputKey,
+  accept = "image/jpeg,image/png,image/webp",
   disabled,
   onFileChange,
 }: FileInputProps) {
@@ -176,7 +178,7 @@ export function FileInput({
       <Input
         key={inputKey}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={accept}
         disabled={disabled}
         onChange={handleChange}
       />
