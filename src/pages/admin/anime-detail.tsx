@@ -7,7 +7,7 @@ import { toast } from "sonner"
 import { adminApi, type AnimeCoverImage, type AnimeRelation, type AnimeTitle, type AnimeTrailer, type EntityId } from "@/api/admin"
 import { AnimeSelector } from "@/components/admin/entity-selectors"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
-import { TextField } from "@/components/admin/form-fields"
+import { ImageFileField, TextField } from "@/components/admin/form-fields"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDateTime, inputToNullableList, listToInput, nullableNumber, nullableString } from "@/lib/admin-form"
@@ -31,6 +31,7 @@ type CoverForm = {
 type TrailerForm = {
   videoUrl: string
   thumbnailUrl: string
+  thumbnailFile: File | null
 }
 
 type RelationForm = {
@@ -57,6 +58,7 @@ const emptyCoverForm: CoverForm = {
 const emptyTrailerForm: TrailerForm = {
   videoUrl: "",
   thumbnailUrl: "",
+  thumbnailFile: null,
 }
 
 const emptyRelationForm: RelationForm = {
@@ -124,13 +126,42 @@ export default function AdminAnimeDetailPage() {
   })
 
   const createTrailerMutation = useMutation({
-    mutationFn: () => adminApi.createAnimeTrailer(id ?? "", buildTrailerPayload(trailerForm)),
+    mutationFn: async () => {
+      const trailer = await adminApi.createAnimeTrailer(id ?? "", buildTrailerPayload(trailerForm))
+
+      if (trailerForm.thumbnailFile) {
+        const trailerId = getNestedId(trailer, "trailerId")
+
+        if (!trailerId) {
+          throw new TrailerThumbnailUploadError("API не вернул ID созданного трейлера")
+        }
+
+        try {
+          await adminApi.uploadAnimeTrailerThumbnail(trailerId, trailerForm.thumbnailFile)
+        } catch (error) {
+          throw new TrailerThumbnailUploadError(
+            error instanceof Error ? error.message : "неизвестная ошибка",
+          )
+        }
+      }
+
+      return trailer
+    },
     onSuccess: async () => {
       toast.success("Трейлер создан")
       setTrailerForm(emptyTrailerForm)
       await invalidateAnime()
     },
-    onError: handleMutationError,
+    onError: async (error) => {
+      if (error instanceof TrailerThumbnailUploadError) {
+        toast.error(`Трейлер создан, но thumbnail не загружен: ${error.message}`)
+        setTrailerForm(emptyTrailerForm)
+        await invalidateAnime()
+        return
+      }
+
+      handleMutationError(error)
+    },
   })
 
   const deleteTrailerMutation = useMutation({
@@ -324,13 +355,23 @@ export default function AdminAnimeDetailPage() {
           <CardDescription>Список, создание, удаление и загрузка thumbnail.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
-          <form className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end" onSubmit={handleTrailerSubmit}>
+          <form className="grid gap-4 md:grid-cols-2 md:items-end" onSubmit={handleTrailerSubmit}>
             <TextField label="Video URL" value={trailerForm.videoUrl} required disabled={createTrailerMutation.isPending} onValueChange={(videoUrl) => setTrailerForm((current) => ({ ...current, videoUrl }))} />
             <TextField label="Thumbnail URL" value={trailerForm.thumbnailUrl} disabled={createTrailerMutation.isPending} onValueChange={(thumbnailUrl) => setTrailerForm((current) => ({ ...current, thumbnailUrl }))} />
-            <Button type="submit" disabled={createTrailerMutation.isPending}>
-              <Plus className="size-4" />
-              Создать
-            </Button>
+            <ImageFileField
+              className="md:col-span-2"
+              label="Thumbnail"
+              description="JPEG, PNG или WebP, до 10 МБ. Выбранный файл имеет приоритет над URL."
+              value={trailerForm.thumbnailFile}
+              disabled={createTrailerMutation.isPending}
+              onFileChange={(thumbnailFile) => setTrailerForm((current) => ({ ...current, thumbnailFile }))}
+            />
+            <div className="md:col-span-2">
+              <Button type="submit" disabled={createTrailerMutation.isPending}>
+                <Plus className="size-4" />
+                Создать
+              </Button>
+            </div>
           </form>
 
           <NestedTable
@@ -503,4 +544,11 @@ function getNestedId(item: AnimeTrailer | AnimeRelation, fallbackKey: "trailerId
 
 function getAnimeTitle(item: { id: EntityId; title?: AnimeTitle }) {
   return item.title?.russian || item.title?.romaji || `Anime #${item.id}`
+}
+
+class TrailerThumbnailUploadError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = "TrailerThumbnailUploadError"
+  }
 }

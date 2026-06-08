@@ -3,7 +3,7 @@ import { useState } from "react"
 import { adminApi, type Episode, type EpisodeCreatePayload, type EpisodeUpdatePayload } from "@/api/admin"
 import { AnimeSelector } from "@/components/admin/entity-selectors"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
-import { CheckboxField, NumberField, TextareaField, TextField } from "@/components/admin/form-fields"
+import { CheckboxField, ImageFileField, NumberField, TextareaField, TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
 import { formatDateTime, nullableNumber, nullableString, optionalNumber, toInputString } from "@/lib/admin-form"
 
@@ -15,6 +15,7 @@ type EpisodeForm = {
   name: string
   description: string
   isFiller: boolean
+  thumbnailFile: File | null
 }
 
 const emptyEpisodeForm: EpisodeForm = {
@@ -25,6 +26,7 @@ const emptyEpisodeForm: EpisodeForm = {
   name: "",
   description: "",
   isFiller: false,
+  thumbnailFile: null,
 }
 
 export default function AdminEpisodesPage() {
@@ -74,6 +76,11 @@ export default function AdminEpisodesPage() {
       getTitle={(item) => item.name || `Episode #${item.id}`}
       list={adminApi.listEpisodes}
       create={adminApi.createEpisode}
+      afterCreate={(item, form) =>
+        form.thumbnailFile
+          ? adminApi.uploadEpisodeThumbnail(item.id, form.thumbnailFile).then(() => undefined)
+          : Promise.resolve()
+      }
       update={adminApi.updateEpisode}
       remove={adminApi.deleteEpisode}
       toForm={toEpisodeForm}
@@ -94,7 +101,7 @@ export default function AdminEpisodesPage() {
   )
 }
 
-function EpisodeFormFields({ value, disabled, onChange }: ResourceFormProps<EpisodeForm>) {
+function EpisodeFormFields({ value, disabled, isEditing, onChange }: ResourceFormProps<EpisodeForm>) {
   return (
     <>
       <AnimeSelector
@@ -123,6 +130,15 @@ function EpisodeFormFields({ value, disabled, onChange }: ResourceFormProps<Epis
         disabled={disabled}
         onValueChange={(thumbnailUrl) => onChange({ thumbnailUrl })}
       />
+      {!isEditing && (
+        <ImageFileField
+          label="Thumbnail"
+          description="JPEG, PNG или WebP, до 10 МБ. Выбранный файл имеет приоритет над URL."
+          value={value.thumbnailFile}
+          disabled={disabled}
+          onFileChange={(thumbnailFile) => onChange({ thumbnailFile })}
+        />
+      )}
       <TextField
         label="Название"
         value={value.name}
@@ -154,6 +170,7 @@ function toEpisodeForm(item: Episode): EpisodeForm {
     name: item.name ?? "",
     description: item.description ?? "",
     isFiller: Boolean(item.isFiller),
+    thumbnailFile: null,
   }
 }
 

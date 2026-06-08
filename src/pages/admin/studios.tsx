@@ -1,15 +1,17 @@
 import { adminApi, type Studio, type StudioPayload } from "@/api/admin"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
-import { TextField } from "@/components/admin/form-fields"
+import { ImageFileField, TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
 import { formatDateTime, nullableString } from "@/lib/admin-form"
 
 type StudioForm = {
   logo: string
+  logoFile: File | null
 }
 
 const emptyStudioForm: StudioForm = {
   logo: "",
+  logoFile: null,
 }
 
 export default function AdminStudiosPage() {
@@ -43,9 +45,12 @@ export default function AdminStudiosPage() {
       getTitle={(item) => `Studio #${item.id}`}
       list={adminApi.listStudios}
       create={adminApi.createStudio}
+      afterCreate={(item, form) =>
+        form.logoFile ? adminApi.uploadStudioLogo(item.id, form.logoFile).then(() => undefined) : Promise.resolve()
+      }
       update={adminApi.updateStudio}
       remove={adminApi.deleteStudio}
-      toForm={(item) => ({ logo: item.logo ?? "" })}
+      toForm={(item) => ({ logo: item.logo ?? "", logoFile: null })}
       buildCreatePayload={buildStudioPayload}
       buildUpdatePayload={buildStudioPayload}
       renderForm={(props) => <StudioFormFields {...props} />}
@@ -63,14 +68,25 @@ export default function AdminStudiosPage() {
   )
 }
 
-function StudioFormFields({ value, disabled, onChange }: ResourceFormProps<StudioForm>) {
+function StudioFormFields({ value, disabled, isEditing, onChange }: ResourceFormProps<StudioForm>) {
   return (
-    <TextField
-      label="Logo URL"
-      value={value.logo}
-      disabled={disabled}
-      onValueChange={(logo) => onChange({ logo })}
-    />
+    <>
+      <TextField
+        label="Logo URL"
+        value={value.logo}
+        disabled={disabled}
+        onValueChange={(logo) => onChange({ logo })}
+      />
+      {!isEditing && (
+        <ImageFileField
+          label="Logo"
+          description="JPEG, PNG или WebP, до 10 МБ. Выбранный файл имеет приоритет над URL."
+          value={value.logoFile}
+          disabled={disabled}
+          onFileChange={(logoFile) => onChange({ logoFile })}
+        />
+      )}
+    </>
   )
 }
 
