@@ -5,8 +5,9 @@ import { ArrowLeft, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { adminApi, type AnimeCoverImage, type AnimeRelation, type AnimeTitle, type AnimeTrailer, type EntityId } from "@/api/admin"
+import { AnimeSelector } from "@/components/admin/entity-selectors"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
-import { NumberField, TextField } from "@/components/admin/form-fields"
+import { TextField } from "@/components/admin/form-fields"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDateTime, inputToNullableList, listToInput, nullableNumber, nullableString } from "@/lib/admin-form"
@@ -380,8 +381,15 @@ export default function AdminAnimeDetailPage() {
           <CardDescription>Relations между аниме.</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-5">
-          <form className="grid gap-4 md:grid-cols-[14rem_minmax(0,1fr)_auto] md:items-end" onSubmit={handleRelationSubmit}>
-            <NumberField label="Related Anime ID" value={relationForm.relatedAnimeId} required disabled={createRelationMutation.isPending} onValueChange={(relatedAnimeId) => setRelationForm((current) => ({ ...current, relatedAnimeId }))} />
+          <form className="grid gap-4 md:grid-cols-[minmax(14rem,1fr)_minmax(0,1fr)_auto] md:items-end" onSubmit={handleRelationSubmit}>
+            <AnimeSelector
+              label="Связанное аниме"
+              value={relationForm.relatedAnimeId}
+              required
+              disabled={createRelationMutation.isPending}
+              excludeIds={[id]}
+              onValueChange={(relatedAnimeId) => setRelationForm((current) => ({ ...current, relatedAnimeId }))}
+            />
             <TextField label="Relation type" value={relationForm.relationType} required disabled={createRelationMutation.isPending} onValueChange={(relationType) => setRelationForm((current) => ({ ...current, relationType }))} />
             <Button type="submit" disabled={createRelationMutation.isPending}>
               <Plus className="size-4" />
