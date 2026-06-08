@@ -2,10 +2,13 @@
 
 import { Link, NavLink, useNavigate } from "react-router"
 import { Menu } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 
 import { cn } from "@/lib/utils"
 import { authClient } from "@/lib/auth-client"
 import { isAdminUser } from "@/lib/admin-auth"
+import { useAuthPrompt } from "@/hooks/use-auth-prompt"
+import { userActivityKeys } from "@/hooks/use-user-activity"
 
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -47,13 +50,16 @@ const adminNavItem = {
 
 export default function Header() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const { data: session, isPending } = authClient.useSession()
+  const { openAuthPrompt } = useAuthPrompt()
 
   const user = session?.user
   const visibleNavItems = isAdminUser(user) ? [...navItems, adminNavItem] : navItems
 
   async function handleLogout() {
     await authClient.signOut()
+    queryClient.removeQueries({ queryKey: userActivityKeys.all })
     navigate("/auth/login", { replace: true })
   }
 
@@ -70,6 +76,12 @@ export default function Header() {
               <NavLink
                 key={item.to}
                 to={item.to}
+                onClick={(event) => {
+                  if (item.to === "/favorites" && !user) {
+                    event.preventDefault()
+                    openAuthPrompt()
+                  }
+                }}
                 className={({ isActive }) =>
                   cn(
                     "rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",
@@ -112,6 +124,7 @@ export default function Header() {
             navItems={visibleNavItems}
             isPending={isPending}
             onLogout={handleLogout}
+            onAuthRequired={openAuthPrompt}
           />
         </div>
       </div>
@@ -188,9 +201,10 @@ type MobileMenuProps = {
   } | null | undefined
   isPending: boolean
   onLogout: () => void
+  onAuthRequired: () => void
 }
 
-function MobileMenu({ navItems, user, isPending, onLogout }: MobileMenuProps) {
+function MobileMenu({ navItems, user, isPending, onLogout, onAuthRequired }: MobileMenuProps) {
   return (
     <Sheet>
       <SheetTrigger asChild>
@@ -209,6 +223,12 @@ function MobileMenu({ navItems, user, isPending, onLogout }: MobileMenuProps) {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={(event) => {
+                if (item.to === "/favorites" && !user) {
+                  event.preventDefault()
+                  onAuthRequired()
+                }
+              }}
               className={({ isActive }) =>
                 cn(
                   "rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground",

@@ -1,10 +1,13 @@
 import { authClient } from "@/lib/auth-client"
 import { Navigate, Outlet } from "react-router"
+import { useLocation } from "react-router"
+import { getAuthReturnPath } from "@/lib/auth-return"
 
 export default function Auth() {
+  const location = useLocation()
   // Выход со страницы авторизации если сессия существует
   if (authClient.useSession().data) {
-    return <Navigate to="/" replace />
+    return <Navigate to={getAuthReturnPath(location.state)} replace />
   }
 
   return (

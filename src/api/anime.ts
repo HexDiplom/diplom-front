@@ -86,6 +86,8 @@ export type AnimeRelation = {
 export type Anime = {
   id: number
   title: AnimeTitle
+  averageRating?: number | null
+  ratingCount?: number
   status: AnimeStatus
   format?: AnimeFormat | null
   description?: string | null

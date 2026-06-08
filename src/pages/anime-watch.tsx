@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
 } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   AlertCircle,
   ArrowLeft,
@@ -32,18 +33,33 @@ import {
 } from "lucide-react"
 import { Link, useParams, useSearchParams } from "react-router"
 
-import type { Episode, EpisodeVideo } from "@/api/anime"
+import type { Anime, Episode, EpisodeVideo, ListResponse } from "@/api/anime"
+import {
+  updateWatchProgress,
+  type WatchHistoryItem,
+} from "@/api/user-activity"
 import type { ShakaVideoController } from "@/components/player/shaka-video"
 import { useAnimeDetail, useAnimeEpisodes, useEpisode } from "@/hooks/use-anime-detail"
+import { useWatchHistory, userActivityKeys } from "@/hooks/use-user-activity"
+import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 
 const ShakaVideo = lazy(() => import("@/components/player/shaka-video"))
 
+type PlaybackSnapshot = {
+  episode: Episode
+  currentTime: number
+  duration: number
+}
+
 export default function AnimeWatchPage() {
   const { id } = useParams()
+  const { data: session } = authClient.useSession()
   const validId = id && /^\d+$/.test(id) ? id : undefined
+  const isAuthenticated = Boolean(session?.user)
   const animeQuery = useAnimeDetail(validId)
   const episodesQuery = useAnimeEpisodes(validId)
+  const historyQuery = useWatchHistory(isAuthenticated)
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
   const [isEpisodePanelOpen, setIsEpisodePanelOpen] = useState(false)
@@ -72,6 +88,15 @@ export default function AnimeWatchPage() {
     currentEpisodeIndex >= 0 ? displayedEpisodes[currentEpisodeIndex + 1] : undefined
   const videos = currentEpisode?.videos ?? []
   const currentVideo = getEffectiveVideo(videos, selectedVideoId)
+  const progressByEpisode = useMemo(
+    () =>
+      new Map(
+        (historyQuery.data?.data ?? [])
+          .filter((item) => item.anime.id === Number(validId))
+          .map((item) => [item.episode.id, item]),
+      ),
+    [historyQuery.data, validId],
+  )
 
   useEffect(() => {
     if (!firstEpisodeId) {
@@ -154,32 +179,234 @@ export default function AnimeWatchPage() {
           title={`${animeTitle}, эпизод ${currentEpisode?.number ?? ""}`}
           className="h-dvh w-full aspect-auto rounded-none shadow-none ring-0"
           overlay={(player) => (
-            <WatchOverlay
-              player={player}
-              animeId={validId}
-              animeTitle={animeTitle}
-              currentEpisode={currentEpisode}
-              currentVideo={currentVideo}
-              previousEpisode={previousEpisode}
-              nextEpisode={nextEpisode}
-              episodes={displayedEpisodes}
-              videos={videos}
-              isEpisodePending={episodeQuery.isPending}
-              isEpisodeError={episodeQuery.isError}
-              isPanelOpen={isEpisodePanelOpen}
-              hasMoreEpisodes={Boolean(episodesQuery.hasNextPage)}
-              isLoadingMore={episodesQuery.isFetchingNextPage}
-              onPanelOpen={() => setIsEpisodePanelOpen(true)}
-              onPanelClose={() => setIsEpisodePanelOpen(false)}
-              onEpisodeSelect={selectEpisode}
-              onVideoSelect={setSelectedVideoId}
-              onLoadMore={() => episodesQuery.fetchNextPage()}
-            />
+            <>
+              <PlaybackActivity
+                player={player}
+                anime={animeQuery.data}
+                episode={currentEpisode}
+                manifestUrl={currentVideo?.manifestUrl}
+                savedProgress={currentEpisode ? progressByEpisode.get(currentEpisode.id) : undefined}
+                enabled={isAuthenticated}
+              />
+              <WatchOverlay
+                player={player}
+                animeId={validId}
+                animeTitle={animeTitle}
+                currentEpisode={currentEpisode}
+                currentVideo={currentVideo}
+                previousEpisode={previousEpisode}
+                nextEpisode={nextEpisode}
+                episodes={displayedEpisodes}
+                videos={videos}
+                progressByEpisode={progressByEpisode}
+                isEpisodePending={episodeQuery.isPending}
+                isEpisodeError={episodeQuery.isError}
+                isPanelOpen={isEpisodePanelOpen}
+                hasMoreEpisodes={Boolean(episodesQuery.hasNextPage)}
+                isLoadingMore={episodesQuery.isFetchingNextPage}
+                onPanelOpen={() => setIsEpisodePanelOpen(true)}
+                onPanelClose={() => setIsEpisodePanelOpen(false)}
+                onEpisodeSelect={selectEpisode}
+                onVideoSelect={setSelectedVideoId}
+                onLoadMore={() => episodesQuery.fetchNextPage()}
+              />
+            </>
           )}
         />
       </Suspense>
     </main>
   )
+}
+
+function PlaybackActivity({
+  player,
+  anime,
+  episode,
+  manifestUrl,
+  savedProgress,
+  enabled,
+}: {
+  player: ShakaVideoController
+  anime?: Anime
+  episode?: Episode
+  manifestUrl?: string | null
+  savedProgress?: { positionSeconds: number; completed: boolean }
+  enabled: boolean
+}) {
+  const queryClient = useQueryClient()
+  const startedEpisodeRef = useRef<string | null>(null)
+  const previousPlayingRef = useRef(false)
+  const periodicBucketRef = useRef(new Map<string, number>())
+  const snapshotsRef = useRef(new Map<string, PlaybackSnapshot>())
+  const lastSavedRef = useRef(new Map<string, string>())
+  const latestEpisodeIdRef = useRef<string | null>(null)
+  const saveRef = useRef<(snapshot?: PlaybackSnapshot, keepalive?: boolean) => void>(() => undefined)
+
+  const saveProgress = useCallback(
+    (snapshot?: PlaybackSnapshot, keepalive = false) => {
+      if (!enabled || !anime || !snapshot || snapshot.currentTime < 1) {
+        return
+      }
+
+      const positionSeconds = Math.max(0, Math.floor(snapshot.currentTime))
+      const completed =
+        snapshot.duration > 0 && snapshot.currentTime / snapshot.duration >= 0.9
+      const signature = `${positionSeconds}:${completed}`
+
+      if (lastSavedRef.current.get(snapshot.episode.id) === signature) {
+        return
+      }
+
+      lastSavedRef.current.set(snapshot.episode.id, signature)
+
+      void updateWatchProgress(
+        snapshot.episode.id,
+        { positionSeconds, completed },
+        keepalive,
+      ).then(() => {
+        const now = new Date().toISOString()
+
+        queryClient.setQueryData<ListResponse<WatchHistoryItem>>(
+          userActivityKeys.history,
+          (current) => {
+            if (!current) {
+              return current
+            }
+
+            const existingIndex = current.data.findIndex(
+              (item) => item.episode.id === snapshot.episode.id,
+            )
+            const item: WatchHistoryItem = {
+              anime,
+              episode: snapshot.episode,
+              positionSeconds,
+              completed,
+              updatedAt: now,
+            }
+            const data =
+              existingIndex >= 0
+                ? current.data.map((existing, index) => (index === existingIndex ? item : existing))
+                : [item, ...current.data].slice(0, current.meta.limit)
+
+            return {
+              data,
+              meta: {
+                ...current.meta,
+                total: existingIndex >= 0 ? current.meta.total : current.meta.total + 1,
+              },
+            }
+          },
+        )
+
+        void queryClient.invalidateQueries({
+          queryKey: userActivityKeys.continueWatching,
+          refetchType: "none",
+        })
+        void queryClient.invalidateQueries({
+          queryKey: userActivityKeys.anime(anime.id),
+          refetchType: "none",
+        })
+      }).catch(() => {
+        lastSavedRef.current.delete(snapshot.episode.id)
+      })
+    },
+    [anime, enabled, queryClient],
+  )
+
+  useEffect(() => {
+    saveRef.current = saveProgress
+  }, [saveProgress])
+
+  useEffect(() => {
+    if (
+      !episode ||
+      !manifestUrl ||
+      player.loadedManifestUrl !== manifestUrl ||
+      startedEpisodeRef.current !== episode.id
+    ) {
+      return
+    }
+
+    latestEpisodeIdRef.current = episode.id
+    snapshotsRef.current.set(episode.id, {
+      episode,
+      currentTime: player.currentTime,
+      duration: player.duration,
+    })
+  }, [episode, manifestUrl, player.currentTime, player.duration, player.loadedManifestUrl])
+
+  useEffect(() => {
+    if (
+      player.status !== "loaded" ||
+      !episode ||
+      !manifestUrl ||
+      player.loadedManifestUrl !== manifestUrl ||
+      startedEpisodeRef.current === episode.id
+    ) {
+      return
+    }
+
+    startedEpisodeRef.current = episode.id
+
+    if (savedProgress && !savedProgress.completed && savedProgress.positionSeconds > 0) {
+      player.seekTo(savedProgress.positionSeconds)
+    }
+
+    player.play()
+  }, [episode, manifestUrl, player, player.loadedManifestUrl, player.status, savedProgress])
+
+  useEffect(() => {
+    if (!enabled || !episode || !player.isPlaying || player.currentTime < 15) {
+      return
+    }
+
+    const bucket = Math.floor(player.currentTime / 15)
+
+    if (periodicBucketRef.current.get(episode.id) === bucket) {
+      return
+    }
+
+    periodicBucketRef.current.set(episode.id, bucket)
+    saveProgress(snapshotsRef.current.get(episode.id))
+  }, [enabled, episode, player.currentTime, player.isPlaying, saveProgress])
+
+  useEffect(() => {
+    if (
+      enabled &&
+      episode &&
+      previousPlayingRef.current &&
+      !player.isPlaying
+    ) {
+      saveProgress(snapshotsRef.current.get(episode.id))
+    }
+
+    previousPlayingRef.current = player.isPlaying
+  }, [enabled, episode, player.isPlaying, saveProgress])
+
+  useEffect(() => {
+    if (!episode) {
+      return
+    }
+
+    const episodeId = episode.id
+    const snapshots = snapshotsRef.current
+    return () => saveRef.current(snapshots.get(episodeId))
+  }, [episode])
+
+  useEffect(() => {
+    function saveOnPageHide() {
+      const episodeId = latestEpisodeIdRef.current
+      saveRef.current(episodeId ? snapshotsRef.current.get(episodeId) : undefined, true)
+    }
+
+    window.addEventListener("pagehide", saveOnPageHide)
+    return () => {
+      window.removeEventListener("pagehide", saveOnPageHide)
+      saveOnPageHide()
+    }
+  }, [])
+
+  return null
 }
 
 function WatchOverlay({
@@ -192,6 +419,7 @@ function WatchOverlay({
   nextEpisode,
   episodes,
   videos,
+  progressByEpisode,
   isEpisodePending,
   isEpisodeError,
   isPanelOpen,
@@ -212,6 +440,7 @@ function WatchOverlay({
   nextEpisode?: Episode
   episodes: Episode[]
   videos: EpisodeVideo[]
+  progressByEpisode: Map<string, { positionSeconds: number; completed: boolean }>
   isEpisodePending: boolean
   isEpisodeError: boolean
   isPanelOpen: boolean
@@ -469,6 +698,7 @@ function WatchOverlay({
         <EpisodePanel
           episodes={episodes}
           videos={videos}
+          progressByEpisode={progressByEpisode}
           currentEpisode={currentEpisode}
           currentVideo={currentVideo}
           isEpisodePending={isEpisodePending}
@@ -628,6 +858,7 @@ function SettingsChoice({
 function EpisodePanel({
   episodes,
   videos,
+  progressByEpisode,
   currentEpisode,
   currentVideo,
   isEpisodePending,
@@ -641,6 +872,7 @@ function EpisodePanel({
 }: {
   episodes: Episode[]
   videos: EpisodeVideo[]
+  progressByEpisode: Map<string, { positionSeconds: number; completed: boolean }>
   currentEpisode?: Episode
   currentVideo?: EpisodeVideo
   isEpisodePending: boolean
@@ -756,6 +988,7 @@ function EpisodePanel({
           <div className="grid gap-2">
             {filteredEpisodes.map((episode) => {
               const isActive = currentEpisode?.id === episode.id
+              const progress = progressByEpisode.get(episode.id)
 
               return (
                 <button
@@ -785,6 +1018,9 @@ function EpisodePanel({
                         .filter(Boolean)
                         .join(" · ") || "Эпизод"}
                     </span>
+                    {progress && (
+                      <EpisodePanelProgress episode={episode} progress={progress} />
+                    )}
                   </span>
                 </button>
               )
@@ -808,6 +1044,33 @@ function EpisodePanel({
         </div>
       </aside>
     </div>
+  )
+}
+
+function EpisodePanelProgress({
+  episode,
+  progress,
+}: {
+  episode: Episode
+  progress: { positionSeconds: number; completed: boolean }
+}) {
+  const durationSeconds =
+    episode.duration && /^\d+$/.test(episode.duration) ? Number(episode.duration) * 60 : 0
+  const percent = progress.completed
+    ? 100
+    : durationSeconds
+      ? Math.min((progress.positionSeconds / durationSeconds) * 100, 100)
+      : 0
+
+  return (
+    <>
+      <span className="mt-1.5 block text-[9px] font-semibold text-white/55">
+        {progress.completed ? "Просмотрено" : `Продолжить с ${formatPlayerTime(progress.positionSeconds)}`}
+      </span>
+      <span className="mt-1 block h-1 overflow-hidden rounded-full bg-white/10">
+        <span className="block h-full rounded-full bg-white/70" style={{ width: `${percent}%` }} />
+      </span>
+    </>
   )
 }
 

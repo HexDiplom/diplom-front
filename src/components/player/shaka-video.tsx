@@ -29,6 +29,7 @@ export type ShakaTextTrackOption = {
 
 export type ShakaVideoController = {
   status: PlayerStatus
+  loadedManifestUrl: string | null
   isPlaying: boolean
   isBuffering: boolean
   currentTime: number
@@ -45,6 +46,7 @@ export type ShakaVideoController = {
   isPictureInPicture: boolean
   canFullscreen: boolean
   isFullscreen: boolean
+  play: () => void
   togglePlay: () => void
   seekTo: (time: number) => void
   setVolume: (volume: number) => void
@@ -117,6 +119,7 @@ export default function ShakaVideo({
   const textTracksRef = useRef<Map<number, shaka.extern.TextTrack>>(new Map())
   const [isRuntimeReady, setIsRuntimeReady] = useState(false)
   const [status, setStatus] = useState<PlayerStatus>("idle")
+  const [loadedManifestUrl, setLoadedManifestUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [playback, setPlayback] = useState(initialPlaybackState)
 
@@ -280,6 +283,7 @@ export default function ShakaVideo({
       const shouldResumePlayback = Boolean(video && !video.paused && !video.ended)
 
       await player?.unload()
+      setLoadedManifestUrl(null)
 
       if (isCancelled) {
         return
@@ -304,6 +308,7 @@ export default function ShakaVideo({
 
         if (!isCancelled) {
           setStatus("loaded")
+          setLoadedManifestUrl(manifestUrl)
           syncTracks()
           syncMediaState()
 
@@ -314,6 +319,7 @@ export default function ShakaVideo({
       } catch (caughtError) {
         if (!isCancelled) {
           setStatus("error")
+          setLoadedManifestUrl(null)
           setError(formatShakaError(caughtError))
         }
       }
@@ -340,6 +346,14 @@ export default function ShakaVideo({
       })
     } else {
       video.pause()
+    }
+  }, [])
+
+  const play = useCallback(() => {
+    const video = videoRef.current
+
+    if (video?.paused) {
+      void video.play().catch(() => undefined)
     }
   }, [])
 
@@ -445,7 +459,9 @@ export default function ShakaVideo({
   const controller = useMemo<ShakaVideoController>(
     () => ({
       status,
+      loadedManifestUrl,
       ...playback,
+      play,
       togglePlay,
       seekTo,
       setVolume,
@@ -458,6 +474,8 @@ export default function ShakaVideo({
     }),
     [
       playback,
+      play,
+      loadedManifestUrl,
       seekTo,
       selectQuality,
       selectTextTrack,
