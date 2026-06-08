@@ -16,6 +16,7 @@ import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/re
 import { StudioSelector } from "@/components/admin/entity-selectors"
 import {
   CheckboxField,
+  ImageFileField,
   NumberField,
   SelectField,
   TextareaField,
@@ -61,6 +62,8 @@ type AnimeForm = {
   coverLarge: string
   coverMedium: string
   coverColor: string
+  bannerFile: File | null
+  coverFile: File | null
 }
 
 const emptyAnimeForm: AnimeForm = {
@@ -93,6 +96,8 @@ const emptyAnimeForm: AnimeForm = {
   coverLarge: "",
   coverMedium: "",
   coverColor: "",
+  bannerFile: null,
+  coverFile: null,
 }
 
 const enumOptions = (values: readonly string[], includeEmpty = true) => [
@@ -143,6 +148,7 @@ export default function AdminAnimePage() {
       detailsPath={(item) => `/admin/anime/${item.id}`}
       list={adminApi.listAnime}
       create={adminApi.createAnime}
+      afterCreate={uploadAnimeImages}
       update={adminApi.updateAnime}
       remove={adminApi.deleteAnime}
       toForm={toAnimeForm}
@@ -233,6 +239,15 @@ function AnimeFormFields({
           disabled={disabled}
           onValueChange={(bannerImage) => onChange({ bannerImage })}
         />
+        {!isEditing && (
+          <ImageFileField
+            label="Banner image"
+            description="JPEG, PNG или WebP, до 10 МБ. Выбранный файл имеет приоритет над URL."
+            value={value.bannerFile}
+            disabled={disabled}
+            onFileChange={(bannerFile) => onChange({ bannerFile })}
+          />
+        )}
         <CheckboxField
           label="18+"
           checked={value.isAdult}
@@ -294,6 +309,13 @@ function AnimeFormFields({
           <TextField label="Extra large URL" value={value.coverExtraLarge} disabled={disabled} onValueChange={(coverExtraLarge) => onChange({ coverExtraLarge })} />
           <TextField label="Large URL" value={value.coverLarge} disabled={disabled} onValueChange={(coverLarge) => onChange({ coverLarge })} />
           <TextField label="Color" value={value.coverColor} disabled={disabled} onValueChange={(coverColor) => onChange({ coverColor })} />
+          <ImageFileField
+            label="Cover image"
+            description="JPEG, PNG или WebP, до 10 МБ. Выбранный файл имеет приоритет над URL."
+            value={value.coverFile}
+            disabled={disabled}
+            onFileChange={(coverFile) => onChange({ coverFile })}
+          />
         </section>
       )}
     </>
@@ -331,6 +353,8 @@ function toAnimeForm(item: Anime): AnimeForm {
     coverLarge: item.coverImage?.large ?? "",
     coverMedium: item.coverImage?.medium ?? "",
     coverColor: item.coverImage?.color ?? "",
+    bannerFile: null,
+    coverFile: null,
   }
 }
 
@@ -387,6 +411,33 @@ function buildAnimeCreatePayload(form: AnimeForm): AnimeCreatePayload {
 
 function buildAnimeUpdatePayload(form: AnimeForm): AnimeUpdatePayload {
   return buildAnimeCorePayload(form)
+}
+
+async function uploadAnimeImages(item: Anime, form: AnimeForm) {
+  const uploads: Array<{ label: string; promise: Promise<Anime> }> = []
+
+  if (form.bannerFile) {
+    uploads.push({
+      label: "banner",
+      promise: adminApi.uploadAnimeBanner(item.id, form.bannerFile),
+    })
+  }
+
+  if (form.coverFile) {
+    uploads.push({
+      label: "cover",
+      promise: adminApi.uploadAnimeCover(item.id, form.coverFile),
+    })
+  }
+
+  const results = await Promise.allSettled(uploads.map((upload) => upload.promise))
+  const failedLabels = results.flatMap((result, index) =>
+    result.status === "rejected" ? [uploads[index].label] : [],
+  )
+
+  if (failedLabels.length > 0) {
+    throw new Error(`не удалось загрузить: ${failedLabels.join(", ")}`)
+  }
 }
 
 function getAnimeTitle(item: Anime) {

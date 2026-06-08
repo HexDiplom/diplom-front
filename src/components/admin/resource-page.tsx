@@ -55,7 +55,8 @@ type AdminResourcePageProps<TItem, TForm extends object, TCreatePayload, TUpdate
   getTitle: (item: TItem) => string
   detailsPath?: (item: TItem) => string
   list: (params: AdminListParams) => Promise<AdminListResponse<TItem>>
-  create: (payload: TCreatePayload) => Promise<unknown>
+  create: (payload: TCreatePayload) => Promise<TItem>
+  afterCreate?: (item: TItem, form: TForm) => Promise<void>
   update: (id: EntityId, payload: TUpdatePayload) => Promise<unknown>
   remove: (id: EntityId) => Promise<unknown>
   toForm: (item: TItem) => TForm
@@ -91,6 +92,7 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
   detailsPath,
   list,
   create,
+  afterCreate,
   update,
   remove,
   toForm,
@@ -106,6 +108,8 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
   const [page, setPage] = useState(1)
   const [sortBy, setSortBy] = useState(defaultSortBy)
   const [sortOrder, setSortOrder] = useState<AdminSortOrder>("desc")
+  const filterParam = filter?.param
+  const filterValue = filter?.value ?? ""
 
   const params = useMemo<AdminListParams>(() => {
     const nextParams: AdminListParams = {
@@ -115,16 +119,16 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
       sortOrder,
     }
 
-    if (filter?.param === "animeId" && filter.value.trim()) {
-      nextParams.animeId = filter.value.trim()
+    if (filterParam === "animeId" && filterValue.trim()) {
+      nextParams.animeId = filterValue.trim()
     }
 
-    if (filter?.param === "episodeId" && filter.value.trim()) {
-      nextParams.episodeId = filter.value.trim()
+    if (filterParam === "episodeId" && filterValue.trim()) {
+      nextParams.episodeId = filterValue.trim()
     }
 
     return nextParams
-  }, [filter?.param, filter?.value, page, sortBy, sortOrder])
+  }, [filterParam, filterValue, page, sortBy, sortOrder])
 
   const listQuery = useQuery({
     queryKey: [resourceKey, "list", params],
@@ -132,13 +136,32 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
   })
 
   const createMutation = useMutation({
-    mutationFn: (value: TForm) => create(buildCreatePayload(value)),
+    mutationFn: async (value: TForm) => {
+      const item = await create(buildCreatePayload(value))
+
+      try {
+        await afterCreate?.(item, value)
+      } catch (error) {
+        throw new AfterCreateError(error)
+      }
+
+      return item
+    },
     onSuccess: async () => {
       toast.success("Запись создана")
       resetForm()
       await invalidate()
     },
-    onError: showMutationError,
+    onError: async (error) => {
+      if (error instanceof AfterCreateError) {
+        toast.error(`Запись создана, но загрузка изображения не завершена: ${error.message}`)
+        resetForm()
+        await invalidate()
+        return
+      }
+
+      showMutationError(error)
+    },
   })
 
   const updateMutation = useMutation({
@@ -433,4 +456,11 @@ export function AdminResourcePage<TItem, TForm extends object, TCreatePayload, T
 
 function showMutationError(error: Error) {
   toast.error(error.message)
+}
+
+class AfterCreateError extends Error {
+  constructor(cause: unknown) {
+    super(cause instanceof Error ? cause.message : "неизвестная ошибка")
+    this.name = "AfterCreateError"
+  }
 }

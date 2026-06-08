@@ -3,7 +3,7 @@ import { Upload } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
-import { FileInput } from "@/components/admin/form-fields"
+import { ImageFileField } from "@/components/admin/form-fields"
 
 type FileUploadFormProps = {
   label: string
@@ -23,7 +23,6 @@ export function FileUploadForm({
   onSuccess,
 }: FileUploadFormProps) {
   const [file, setFile] = useState<File | null>(null)
-  const [inputKey, setInputKey] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
 
   async function handleSubmit() {
@@ -38,7 +37,6 @@ export function FileUploadForm({
       await onUpload(file)
       toast.success("Файл загружен")
       setFile(null)
-      setInputKey((current) => current + 1)
       onSuccess?.()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось загрузить файл")
@@ -49,10 +47,10 @@ export function FileUploadForm({
 
   return (
     <div className="grid gap-3 rounded-3xl border bg-muted/20 p-4">
-      <FileInput
-        inputKey={inputKey}
+      <ImageFileField
         label={label}
         description={description}
+        value={file}
         disabled={disabled || isUploading}
         onFileChange={setFile}
       />

@@ -1,7 +1,11 @@
-import type { ChangeEvent, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react"
+import { useState, type ChangeEvent, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes } from "react"
+import { X } from "lucide-react"
+import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { ADMIN_IMAGE_ACCEPT, formatFileSize, getImageFileError } from "@/lib/admin-image"
 import { cn } from "@/lib/utils"
 
 type BaseFieldProps = {
@@ -165,7 +169,7 @@ export function FileInput({
   description,
   className,
   inputKey,
-  accept = "image/jpeg,image/png,image/webp",
+  accept = ADMIN_IMAGE_ACCEPT,
   disabled,
   onFileChange,
 }: FileInputProps) {
@@ -183,6 +187,76 @@ export function FileInput({
         onChange={handleChange}
       />
     </FieldFrame>
+  )
+}
+
+type ImageFileFieldProps = BaseFieldProps & {
+  value: File | null
+  disabled?: boolean
+  onFileChange: (file: File | null) => void
+}
+
+export function ImageFileField({
+  label,
+  description,
+  className,
+  value,
+  disabled,
+  onFileChange,
+}: ImageFileFieldProps) {
+  const [inputKey, setInputKey] = useState(0)
+
+  function handleChange(file: File | null) {
+    setInputKey((current) => current + 1)
+
+    if (!file) {
+      onFileChange(null)
+      return
+    }
+
+    const error = getImageFileError(file)
+
+    if (error) {
+      toast.error(error)
+      onFileChange(null)
+      return
+    }
+
+    onFileChange(file)
+  }
+
+  const selectedFileDescription = value
+    ? `${value.name} · ${formatFileSize(value.size)}`
+    : description
+
+  return (
+    <div className={cn("grid gap-2", className)}>
+      <FileInput
+        inputKey={inputKey}
+        label={label}
+        description={selectedFileDescription}
+        accept={ADMIN_IMAGE_ACCEPT}
+        disabled={disabled}
+        onFileChange={handleChange}
+      />
+      {value && (
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={disabled}
+            onClick={() => {
+              setInputKey((current) => current + 1)
+              onFileChange(null)
+            }}
+          >
+            <X className="size-4" />
+            Убрать файл
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
 
