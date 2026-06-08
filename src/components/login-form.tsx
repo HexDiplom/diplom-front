@@ -14,6 +14,7 @@ import { useMemo, useState } from "react"
 import { authClient } from "@/lib/auth-client"
 import { toast } from "sonner"
 import { getAuthErrorMessage } from "@/lib/auth-errors"
+import { getAuthReturnPath } from "@/lib/auth-return"
 
 export function LoginForm({
   className,
@@ -28,7 +29,7 @@ export function LoginForm({
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const from = location.state?.from?.pathname || "/"
+  const from = getAuthReturnPath(location.state)
 
   async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -129,7 +130,7 @@ export function LoginForm({
                 </Button>
               </Field>
               <FieldDescription className="text-center">
-                Ещё нет аккаунта? <Link to="/auth/signup">Регистрация</Link>
+                Ещё нет аккаунта? <Link to="/auth/signup" state={location.state}>Регистрация</Link>
               </FieldDescription>
             </FieldGroup>
           </form>

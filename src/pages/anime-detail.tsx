@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from "react"
-import { useQueries } from "@tanstack/react-query"
-import { AlertCircle, Film, Loader2, Play } from "lucide-react"
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query"
+import { AlertCircle, Bookmark, Film, Loader2, Play, Star } from "lucide-react"
 import { Link, useParams } from "react-router"
+import { toast } from "sonner"
 
 import {
   getAnime,
@@ -10,6 +11,7 @@ import {
   type AnimeTrailer,
   type Episode,
 } from "@/api/anime"
+import { addFavorite, deleteFavorite, deleteRating, setRating } from "@/api/user-activity"
 import { Button } from "@/components/ui/button"
 import {
   useAnimeDetail,
@@ -18,6 +20,13 @@ import {
   useAnimeStudio,
   useAnimeTrailers,
 } from "@/hooks/use-anime-detail"
+import {
+  useAnimeUserState,
+  useWatchHistory,
+  userActivityKeys,
+} from "@/hooks/use-user-activity"
+import { useAuthPrompt } from "@/hooks/use-auth-prompt"
+import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 
 const statusLabels: Record<string, string> = {
@@ -62,12 +71,27 @@ const relationLabels: Record<string, string> = {
 
 export default function AnimeDetailPage() {
   const { id } = useParams()
+  const { data: session } = authClient.useSession()
+  const { openAuthPrompt } = useAuthPrompt()
+  const queryClient = useQueryClient()
   const validId = id && /^\d+$/.test(id) ? id : undefined
+  const isAuthenticated = Boolean(session?.user)
   const animeQuery = useAnimeDetail(validId)
   const trailersQuery = useAnimeTrailers(validId)
   const relationsQuery = useAnimeRelations(validId)
   const episodesQuery = useAnimeEpisodes(validId)
+  const userStateQuery = useAnimeUserState(validId, isAuthenticated)
+  const historyQuery = useWatchHistory(isAuthenticated)
   const studioQuery = useAnimeStudio(animeQuery.data?.studioId)
+  const progressByEpisode = useMemo(
+    () =>
+      new Map(
+        (historyQuery.data?.data ?? [])
+          .filter((item) => item.anime.id === Number(validId))
+          .map((item) => [item.episode.id, item]),
+      ),
+    [historyQuery.data, validId],
+  )
   const relations = relationsQuery.data?.data ?? []
   const relatedRelations = relations.filter(
     (relation) => relation.relatedAnimeId !== undefined,
@@ -89,6 +113,52 @@ export default function AnimeDetailPage() {
         Boolean(item.anime),
     )
 
+  const favoriteMutation = useMutation({
+    mutationFn: async () => {
+      if (!validId) {
+        return
+      }
+
+      if (userStateQuery.data?.isFavorite) {
+        await deleteFavorite(validId)
+      } else {
+        await addFavorite(validId)
+      }
+    },
+    onSuccess: async () => {
+      toast.success(
+        userStateQuery.data?.isFavorite ? "Удалено из избранного" : "Добавлено в избранное",
+      )
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: userActivityKeys.anime(validId ?? "") }),
+        queryClient.invalidateQueries({ queryKey: userActivityKeys.favorites }),
+      ])
+    },
+    onError: () => toast.error("Не удалось обновить избранное"),
+  })
+
+  const ratingMutation = useMutation({
+    mutationFn: async (rating: number | null) => {
+      if (!validId) {
+        return
+      }
+
+      if (rating === null) {
+        await deleteRating(validId)
+      } else {
+        await setRating(validId, rating)
+      }
+    },
+    onSuccess: async (_, rating) => {
+      toast.success(rating === null ? "Оценка удалена" : "Оценка сохранена")
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: userActivityKeys.anime(validId ?? "") }),
+        queryClient.invalidateQueries({ queryKey: ["anime", "detail", validId] }),
+      ])
+    },
+    onError: () => toast.error("Не удалось сохранить оценку"),
+  })
+
   if (!validId) {
     return <PageError title="Некорректный адрес" text="ID аниме должен быть числом." />
   }
@@ -109,7 +179,24 @@ export default function AnimeDetailPage() {
 
   return (
     <div className="min-h-[calc(100dvh-4rem)] bg-background">
-      <Hero anime={anime} title={title} cover={cover} backdrop={backdrop} animeId={validId} />
+      <Hero
+        anime={anime}
+        title={title}
+        cover={cover}
+        backdrop={backdrop}
+        animeId={validId}
+        isAuthenticated={isAuthenticated}
+        isFavorite={Boolean(userStateQuery.data?.isFavorite)}
+        userRating={userStateQuery.data?.userRating ?? null}
+        isFavoritePending={favoriteMutation.isPending || userStateQuery.isPending}
+        isRatingPending={ratingMutation.isPending}
+        onAuthRequired={openAuthPrompt}
+        onFavoriteToggle={() => favoriteMutation.mutate()}
+        onRatingChange={(rating) =>
+          ratingMutation.mutate(rating === userStateQuery.data?.userRating ? null : rating)
+        }
+        continueEpisodeId={userStateQuery.data?.continueWatching?.episode.id}
+      />
 
       <div className="mx-auto grid w-full max-w-7xl gap-12 px-4 py-10 sm:px-6 lg:px-8">
         {anime.description && (
@@ -161,6 +248,7 @@ export default function AnimeDetailPage() {
           hasMore={Boolean(episodesQuery.hasNextPage)}
           isLoadingMore={episodesQuery.isFetchingNextPage}
           onLoadMore={() => episodesQuery.fetchNextPage()}
+          progressByEpisode={progressByEpisode}
         />
 
         <TrailerSection
@@ -184,12 +272,30 @@ function Hero({
   cover,
   backdrop,
   animeId,
+  isAuthenticated,
+  isFavorite,
+  userRating,
+  isFavoritePending,
+  isRatingPending,
+  onAuthRequired,
+  onFavoriteToggle,
+  onRatingChange,
+  continueEpisodeId,
 }: {
   anime: Anime
   title: string
   cover?: string | null
   backdrop?: string | null
   animeId: string
+  isAuthenticated: boolean
+  isFavorite: boolean
+  userRating: number | null
+  isFavoritePending: boolean
+  isRatingPending: boolean
+  onAuthRequired: () => void
+  onFavoriteToggle: () => void
+  onRatingChange: (rating: number) => void
+  continueEpisodeId?: string
 }) {
   const heroFacts = [
     anime.format ? formatLabels[anime.format] || anime.format : undefined,
@@ -253,12 +359,48 @@ function Hero({
             </p>
           )}
 
-          <Button asChild size="lg" className="mt-7 rounded-full px-7 shadow-xl">
-            <Link to={`/anime/${animeId}/watch`}>
-              <Play className="size-5 fill-current" />
-              Смотреть
-            </Link>
-          </Button>
+          <div className="mt-7 flex flex-wrap gap-3">
+            <Button asChild size="lg" className="rounded-full px-7 shadow-xl">
+              <Link
+                to={
+                  continueEpisodeId
+                    ? `/anime/${animeId}/watch?episode=${encodeURIComponent(continueEpisodeId)}`
+                    : `/anime/${animeId}/watch`
+                }
+              >
+                <Play className="size-5 fill-current" />
+                {continueEpisodeId ? "Продолжить" : "Смотреть"}
+              </Link>
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant={isFavorite ? "secondary" : "outline"}
+              disabled={isAuthenticated && isFavoritePending}
+              className="rounded-full border-white/25 bg-black/25 px-6 text-white backdrop-blur hover:bg-white/15 hover:text-white"
+              onClick={isAuthenticated ? onFavoriteToggle : onAuthRequired}
+            >
+              {isFavoritePending && isAuthenticated ? (
+                <Loader2 className="size-5 animate-spin" />
+              ) : (
+                <Bookmark className={cn("size-5", isFavorite && "fill-current")} />
+              )}
+              {isFavorite ? "В избранном" : "В избранное"}
+            </Button>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+            <StarRating
+              value={userRating}
+              disabled={isRatingPending}
+              onChange={isAuthenticated ? onRatingChange : () => onAuthRequired()}
+            />
+            <p className="text-xs font-medium text-white/70">
+              {anime.averageRating === null || anime.averageRating === undefined
+                ? "Пока нет оценок"
+                : `${formatRating(anime.averageRating / 2)} из 5 · ${anime.ratingCount ?? 0} оценок`}
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -275,6 +417,7 @@ function EpisodeSection({
   hasMore,
   isLoadingMore,
   onLoadMore,
+  progressByEpisode,
 }: {
   animeId: string
   episodes: Episode[]
@@ -285,6 +428,7 @@ function EpisodeSection({
   hasMore: boolean
   isLoadingMore: boolean
   onLoadMore: () => void
+  progressByEpisode: Map<string, { positionSeconds: number; completed: boolean }>
 }) {
   const uniqueEpisodes = useMemo(
     () => Array.from(new Map(episodes.map((episode) => [episode.id, episode])).values()),
@@ -345,6 +489,10 @@ function EpisodeSection({
                   Филлер
                 </span>
               )}
+              <EpisodeProgress
+                episode={episode}
+                progress={progressByEpisode.get(episode.id)}
+              />
             </div>
             <p className="mt-2 truncate text-sm font-semibold">
               {episode.name || `Эпизод ${episode.number}`}
@@ -366,6 +514,92 @@ function EpisodeSection({
         </Button>
       )}
     </ContentSection>
+  )
+}
+
+function EpisodeProgress({
+  episode,
+  progress,
+}: {
+  episode: Episode
+  progress?: { positionSeconds: number; completed: boolean }
+}) {
+  if (!progress) {
+    return null
+  }
+
+  const durationSeconds =
+    episode.duration && /^\d+$/.test(episode.duration) ? Number(episode.duration) * 60 : 0
+  const percent = progress.completed
+    ? 100
+    : durationSeconds > 0
+      ? Math.min((progress.positionSeconds / durationSeconds) * 100, 100)
+      : 0
+
+  return (
+    <>
+      <span className="absolute left-3 top-3 rounded-full bg-black/55 px-2 py-1 text-[10px] font-bold text-white backdrop-blur">
+        {progress.completed ? "Просмотрено" : `С ${formatProgressTime(progress.positionSeconds)}`}
+      </span>
+      <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20">
+        <div className="h-full bg-primary-foreground" style={{ width: `${percent}%` }} />
+      </div>
+    </>
+  )
+}
+
+function StarRating({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: number | null
+  disabled: boolean
+  onChange: (rating: number) => void
+}) {
+  const [hovered, setHovered] = useState<number | null>(null)
+  const displayed = hovered ?? value ?? 0
+
+  return (
+    <div
+      className="flex items-center gap-0.5"
+      aria-label={value ? `Ваша оценка: ${formatRating(value / 2)} из 5` : "Поставить оценку"}
+      onPointerLeave={() => setHovered(null)}
+    >
+      {Array.from({ length: 5 }).map((_, index) => {
+        const starValue = (index + 1) * 2
+        const fill = displayed >= starValue ? 100 : displayed === starValue - 1 ? 50 : 0
+
+        return (
+          <span key={starValue} className="relative inline-block size-7 shrink-0">
+            <Star className="absolute inset-0 size-7 text-white/35" />
+            <span className="pointer-events-none absolute inset-0 overflow-hidden" style={{ width: `${fill}%` }}>
+              <Star className="size-7 fill-amber-300 text-amber-300" />
+            </span>
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={`${index + 0.5} из 5`}
+              className="absolute inset-y-0 left-0 w-1/2 disabled:cursor-wait"
+              onPointerEnter={() => setHovered(starValue - 1)}
+              onFocus={() => setHovered(starValue - 1)}
+              onBlur={() => setHovered(null)}
+              onClick={() => onChange(starValue - 1)}
+            />
+            <button
+              type="button"
+              disabled={disabled}
+              aria-label={`${index + 1} из 5`}
+              className="absolute inset-y-0 right-0 w-1/2 disabled:cursor-wait"
+              onPointerEnter={() => setHovered(starValue)}
+              onFocus={() => setHovered(starValue)}
+              onBlur={() => setHovered(null)}
+              onClick={() => onChange(starValue)}
+            />
+          </span>
+        )
+      })}
+    </div>
   )
 }
 
@@ -665,6 +899,16 @@ function formatAnimeDate(day?: number | null, month?: number | null, year?: numb
 
 function formatEpisodeDuration(duration: string) {
   return /^\d+$/.test(duration) ? `${duration} мин.` : duration
+}
+
+function formatRating(rating: number) {
+  return new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(rating)
+}
+
+function formatProgressTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60)
+  const remainder = Math.floor(seconds % 60)
+  return `${minutes}:${String(remainder).padStart(2, "0")}`
 }
 
 function AnimePageSkeleton() {

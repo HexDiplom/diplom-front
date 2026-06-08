@@ -14,6 +14,7 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { authClient } from "@/lib/auth-client"
 import { getAuthErrorMessage } from "@/lib/auth-errors"
+import { getAuthReturnPath } from "@/lib/auth-return"
 
 export function SignupForm({
   className,
@@ -31,7 +32,7 @@ export function SignupForm({
   const [confirmPassword, setConfirmPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
 
-  const from = location.state?.from?.pathname || "/"
+  const from = getAuthReturnPath(location.state)
 
   async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -179,7 +180,7 @@ export function SignupForm({
                 </Button>
               </Field>
               <FieldDescription className="text-center">
-                Уже есть аккаунт? <Link to="/auth/login">Войти</Link>
+                Уже есть аккаунт? <Link to="/auth/login" state={location.state}>Войти</Link>
               </FieldDescription>
             </FieldGroup>
           </form>
