@@ -364,7 +364,12 @@ export default function ShakaVideo({
       return
     }
 
-    video.currentTime = Math.max(0, Math.min(time, Number.isFinite(video.duration) ? video.duration : time))
+    const nextTime = Math.max(
+      0,
+      Math.min(time, Number.isFinite(video.duration) ? video.duration : time),
+    )
+    video.currentTime = nextTime
+    setPlayback((current) => ({ ...current, currentTime: nextTime }))
   }, [])
 
   const setVolume = useCallback((volume: number) => {

@@ -716,12 +716,15 @@ function WatchOverlay({
 }
 
 function PlayerProgress({ player }: { player: ShakaVideoController }) {
+  const pointerSeekingRef = useRef(false)
+  const [previewTime, setPreviewTime] = useState<number | null>(null)
   const [hoverPosition, setHoverPosition] = useState<{
     percent: number
     time: number
   } | null>(null)
   const duration = Math.max(player.duration, 0)
-  const playedPercent = duration ? (player.currentTime / duration) * 100 : 0
+  const displayedTime = previewTime ?? player.currentTime
+  const playedPercent = duration ? (displayedTime / duration) * 100 : 0
   const bufferedPercent = duration
     ? Math.max(playedPercent, (player.bufferedEnd / duration) * 100)
     : 0
@@ -740,6 +743,35 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
     const bounds = event.currentTarget.getBoundingClientRect()
     const percent = Math.max(0, Math.min((event.clientX - bounds.left) / bounds.width, 1))
     setHoverPosition({ percent: percent * 100, time: percent * duration })
+  }
+
+  function handleProgressChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const time = Number(event.target.value)
+
+    if (pointerSeekingRef.current) {
+      setPreviewTime(time)
+      return
+    }
+
+    player.seekTo(time)
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLInputElement>) {
+    pointerSeekingRef.current = true
+    setPreviewTime(Number(event.currentTarget.value))
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLInputElement>) {
+    const time = Number(event.currentTarget.value)
+    pointerSeekingRef.current = false
+    player.seekTo(time)
+    setPreviewTime(null)
+  }
+
+  function handlePointerCancel() {
+    pointerSeekingRef.current = false
+    setPreviewTime(null)
   }
 
   return (
@@ -765,11 +797,15 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
         min="0"
         max={duration || 0}
         step="0.1"
-        value={Math.min(player.currentTime, duration || 0)}
+        value={Math.min(displayedTime, duration || 0)}
         aria-label="Позиция воспроизведения"
         className="anime-player-progress absolute inset-0 h-full w-full"
         disabled={duration === 0}
-        onChange={(event) => player.seekTo(Number(event.target.value))}
+        onChange={handleProgressChange}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handlePointerCancel}
       />
     </div>
   )
