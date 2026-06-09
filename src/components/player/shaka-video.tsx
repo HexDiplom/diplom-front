@@ -60,6 +60,8 @@ export type ShakaVideoController = {
 
 type ShakaVideoProps = {
   manifestUrl?: string | null
+  sourceReady?: boolean
+  startTime?: number | null
   poster?: string | null
   title?: string
   className?: string
@@ -107,6 +109,8 @@ const initialPlaybackState: PlaybackState = {
 
 export default function ShakaVideo({
   manifestUrl,
+  sourceReady = true,
+  startTime = null,
   poster,
   title = "Видео",
   className,
@@ -117,11 +121,16 @@ export default function ShakaVideo({
   const playerRef = useRef<shaka.Player | null>(null)
   const variantTracksRef = useRef<Map<number, shaka.extern.Track>>(new Map())
   const textTracksRef = useRef<Map<number, shaka.extern.TextTrack>>(new Map())
+  const startTimeRef = useRef(startTime)
   const [isRuntimeReady, setIsRuntimeReady] = useState(false)
   const [status, setStatus] = useState<PlayerStatus>("idle")
   const [loadedManifestUrl, setLoadedManifestUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [playback, setPlayback] = useState(initialPlaybackState)
+
+  useEffect(() => {
+    startTimeRef.current = startTime
+  }, [startTime])
 
   const syncMediaState = useCallback(() => {
     const video = videoRef.current
@@ -224,6 +233,8 @@ export default function ShakaVideo({
       "play",
       "pause",
       "ended",
+      "seeking",
+      "seeked",
       "timeupdate",
       "durationchange",
       "progress",
@@ -272,7 +283,7 @@ export default function ShakaVideo({
   useEffect(() => {
     const player = playerRef.current
 
-    if (!isRuntimeReady || !player) {
+    if (!isRuntimeReady || !player || !sourceReady) {
       return
     }
 
@@ -304,7 +315,7 @@ export default function ShakaVideo({
       setError(null)
 
       try {
-        await player?.load(manifestUrl)
+        await player?.load(manifestUrl, startTimeRef.current)
 
         if (!isCancelled) {
           setStatus("loaded")
@@ -330,7 +341,7 @@ export default function ShakaVideo({
     return () => {
       isCancelled = true
     }
-  }, [isRuntimeReady, manifestUrl, syncMediaState, syncTracks])
+  }, [isRuntimeReady, manifestUrl, sourceReady, syncMediaState, syncTracks])
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current
@@ -369,7 +380,6 @@ export default function ShakaVideo({
       Math.min(time, Number.isFinite(video.duration) ? video.duration : time),
     )
     video.currentTime = nextTime
-    setPlayback((current) => ({ ...current, currentTime: nextTime }))
   }, [])
 
   const setVolume = useCallback((volume: number) => {
@@ -511,19 +521,19 @@ export default function ShakaVideo({
         aria-label={title}
       />
 
-      {(status === "idle" || status === "ready") && (
+      {sourceReady && (status === "idle" || status === "ready") && (
         <PlayerMessage icon={<Play className="size-8" />} text="Нет доступного видео" />
       )}
 
-      {(status === "loading" || playback.isBuffering) && (
+      {(!sourceReady || status === "loading" || playback.isBuffering) && (
         <PlayerMessage
           icon={<Loader2 className="size-8 animate-spin" />}
-          text={status === "loading" ? "Загрузка видео..." : "Буферизация..."}
-          transparent={status === "loaded"}
+          text={!sourceReady || status === "loading" ? "Загрузка видео..." : "Буферизация..."}
+          transparent={sourceReady && status === "loaded"}
         />
       )}
 
-      {status === "error" && (
+      {sourceReady && status === "error" && (
         <PlayerMessage
           icon={<AlertCircle className="size-8 text-destructive" />}
           text={error || "Не удалось загрузить видео"}

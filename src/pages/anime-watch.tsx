@@ -54,7 +54,7 @@ type PlaybackSnapshot = {
 
 export default function AnimeWatchPage() {
   const { id } = useParams()
-  const { data: session } = authClient.useSession()
+  const { data: session, isPending: isSessionPending } = authClient.useSession()
   const validId = id && /^\d+$/.test(id) ? id : undefined
   const isAuthenticated = Boolean(session?.user)
   const animeQuery = useAnimeDetail(validId)
@@ -88,6 +88,8 @@ export default function AnimeWatchPage() {
     currentEpisodeIndex >= 0 ? displayedEpisodes[currentEpisodeIndex + 1] : undefined
   const videos = currentEpisode?.videos ?? []
   const currentVideo = getEffectiveVideo(videos, selectedVideoId)
+  const isPlaybackSourceReady =
+    !isSessionPending && (!isAuthenticated || !historyQuery.isPending)
   const progressByEpisode = useMemo(
     () =>
       new Map(
@@ -97,6 +99,11 @@ export default function AnimeWatchPage() {
       ),
     [historyQuery.data, validId],
   )
+  const savedProgress = currentEpisode ? progressByEpisode.get(currentEpisode.id) : undefined
+  const startTime =
+    savedProgress && !savedProgress.completed && savedProgress.positionSeconds > 0
+      ? savedProgress.positionSeconds
+      : 0
 
   useEffect(() => {
     if (!firstEpisodeId) {
@@ -175,6 +182,8 @@ export default function AnimeWatchPage() {
       <Suspense fallback={<div className="h-full w-full animate-pulse bg-zinc-950" />}>
         <ShakaVideo
           manifestUrl={currentVideo?.manifestUrl}
+          sourceReady={isPlaybackSourceReady}
+          startTime={startTime}
           poster={poster}
           title={`${animeTitle}, эпизод ${currentEpisode?.number ?? ""}`}
           className="h-dvh w-full aspect-auto rounded-none shadow-none ring-0"
@@ -185,7 +194,6 @@ export default function AnimeWatchPage() {
                 anime={animeQuery.data}
                 episode={currentEpisode}
                 manifestUrl={currentVideo?.manifestUrl}
-                savedProgress={currentEpisode ? progressByEpisode.get(currentEpisode.id) : undefined}
                 enabled={isAuthenticated}
               />
               <WatchOverlay
@@ -223,14 +231,12 @@ function PlaybackActivity({
   anime,
   episode,
   manifestUrl,
-  savedProgress,
   enabled,
 }: {
   player: ShakaVideoController
   anime?: Anime
   episode?: Episode
   manifestUrl?: string | null
-  savedProgress?: { positionSeconds: number; completed: boolean }
   enabled: boolean
 }) {
   const queryClient = useQueryClient()
@@ -347,13 +353,8 @@ function PlaybackActivity({
     }
 
     startedEpisodeRef.current = episode.id
-
-    if (savedProgress && !savedProgress.completed && savedProgress.positionSeconds > 0) {
-      player.seekTo(savedProgress.positionSeconds)
-    }
-
     player.play()
-  }, [episode, manifestUrl, player, player.loadedManifestUrl, player.status, savedProgress])
+  }, [episode, manifestUrl, player, player.loadedManifestUrl, player.status])
 
   useEffect(() => {
     if (!enabled || !episode || !player.isPlaying || player.currentTime < 15) {
