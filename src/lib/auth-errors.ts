@@ -11,6 +11,8 @@ const authErrorMessages: Partial<Record<AuthErrorCode, string>> = {
   USER_NOT_FOUND: "Пользователь не найден",
   EMAIL_NOT_VERIFIED: "Email не подтверждён",
   PASSWORD_TOO_SHORT: "Пароль слишком короткий",
+  PROVIDER_NOT_FOUND: "Провайдер авторизации не настроен",
+  INVALID_CALLBACK_URL: "Адрес возврата после авторизации не разрешён",
 }
 
 export function getAuthErrorMessage(code?: string, fallback?: string) {
