@@ -26,6 +26,7 @@ import {
   userActivityKeys,
 } from "@/hooks/use-user-activity"
 import { useAuthPrompt } from "@/hooks/use-auth-prompt"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { authClient } from "@/lib/auth-client"
 import { cn } from "@/lib/utils"
 
@@ -77,6 +78,8 @@ export default function AnimeDetailPage() {
   const validId = id && /^\d+$/.test(id) ? id : undefined
   const isAuthenticated = Boolean(session?.user)
   const animeQuery = useAnimeDetail(validId)
+  useDocumentTitle(animeQuery.data ? getAnimeTitle(animeQuery.data) : "Аниме")
+
   const trailersQuery = useAnimeTrailers(validId)
   const relationsQuery = useAnimeRelations(validId)
   const episodesQuery = useAnimeEpisodes(validId)

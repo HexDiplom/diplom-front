@@ -5,6 +5,7 @@ import { AnimeSelector } from "@/components/admin/entity-selectors"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
 import { CheckboxField, ImageFileField, NumberField, TextareaField, TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { formatDateTime, nullableNumber, nullableString, optionalNumber, toInputString } from "@/lib/admin-form"
 
 type EpisodeForm = {
@@ -30,6 +31,8 @@ const emptyEpisodeForm: EpisodeForm = {
 }
 
 export default function AdminEpisodesPage() {
+  useDocumentTitle("Эпизоды — Админ-панель")
+
   const [animeIdFilter, setAnimeIdFilter] = useState("")
 
   return (

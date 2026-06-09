@@ -14,6 +14,7 @@ import { EpisodeVideoUploadForm } from "@/components/admin/episode-video-upload-
 import { TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
 import { Button } from "@/components/ui/button"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { formatDateTime, inputToNullableList, listToInput, nullableString, optionalString } from "@/lib/admin-form"
 
 type EpisodeVideoForm = {
@@ -35,6 +36,8 @@ const emptyEpisodeVideoForm: EpisodeVideoForm = {
 }
 
 export default function AdminEpisodeVideosPage() {
+  useDocumentTitle("Видео эпизодов — Админ-панель")
+
   const queryClient = useQueryClient()
   const [episodeIdFilter, setEpisodeIdFilter] = useState("")
 

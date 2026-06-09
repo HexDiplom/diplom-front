@@ -40,6 +40,7 @@ import {
 } from "@/api/user-activity"
 import type { ShakaVideoController } from "@/components/player/shaka-video"
 import { useAnimeDetail, useAnimeEpisodes, useEpisode } from "@/hooks/use-anime-detail"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useWatchHistory, userActivityKeys } from "@/hooks/use-user-activity"
 import { authClient } from "@/lib/auth-client"
 import { getPlayerPreferences, updatePlayerPreferences } from "@/lib/player-preferences"
@@ -110,6 +111,13 @@ export default function AnimeWatchPage() {
     savedProgress && !savedProgress.completed && savedProgress.positionSeconds > 0
       ? savedProgress.positionSeconds
       : 0
+  const animeTitle = animeQuery.data ? getAnimeTitle(animeQuery.data.title) : "Загрузка..."
+
+  useDocumentTitle(
+    currentEpisode ? `Эпизод ${currentEpisode.number}` : "Просмотр",
+    currentEpisode?.name,
+    animeQuery.data ? animeTitle : undefined,
+  )
 
   useEffect(() => {
     if (!firstEpisodeId) {
@@ -191,7 +199,6 @@ export default function AnimeWatchPage() {
     return <WatchError text="Для этого тайтла пока нет эпизодов." animeId={validId} />
   }
 
-  const animeTitle = animeQuery.data ? getAnimeTitle(animeQuery.data.title) : "Загрузка..."
   const poster =
     currentEpisode?.thumbnailUrl ||
     animeQuery.data?.coverImage?.extraLarge ||

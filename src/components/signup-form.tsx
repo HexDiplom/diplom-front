@@ -15,11 +15,14 @@ import { toast } from "sonner"
 import { authClient } from "@/lib/auth-client"
 import { getAuthErrorMessage } from "@/lib/auth-errors"
 import { getAuthReturnPath } from "@/lib/auth-return"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 export function SignupForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  useDocumentTitle("Регистрация")
+
   const navigate = useNavigate()
   const location = useLocation()
 

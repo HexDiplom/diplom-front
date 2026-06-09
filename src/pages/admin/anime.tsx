@@ -31,6 +31,7 @@ import {
   optionalString,
   toInputString,
 } from "@/lib/admin-form"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 type AnimeForm = {
   titleRomaji: string
@@ -106,6 +107,8 @@ const enumOptions = (values: readonly string[], includeEmpty = true) => [
 ]
 
 export default function AdminAnimePage() {
+  useDocumentTitle("Аниме — Админ-панель")
+
   return (
     <AdminResourcePage<Anime, AnimeForm, AnimeCreatePayload, AnimeUpdatePayload>
       resourceKey="admin-anime"
