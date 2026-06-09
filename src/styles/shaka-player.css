@@ -35,7 +35,7 @@
 }
 
 .anime-player-progress-area:hover .anime-player-progress-track,
-.anime-player-progress-area:focus-within .anime-player-progress-track {
+.anime-player-progress-area:has(.anime-player-progress:focus-visible) .anime-player-progress-track {
   height: 6px;
 }
 
