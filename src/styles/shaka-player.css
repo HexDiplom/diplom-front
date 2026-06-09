@@ -27,7 +27,8 @@
       to right,
       #ef4444 0 var(--played-percent),
       rgb(255 255 255 / 45%) var(--played-percent) var(--buffered-percent),
-      rgb(255 255 255 / 22%) var(--buffered-percent) 100%
+      rgb(255 255 255 / 32%) var(--buffered-percent) var(--hover-percent),
+      rgb(255 255 255 / 22%) var(--hover-percent) 100%
     );
   transform: translateY(-50%);
   transition: height 150ms ease;

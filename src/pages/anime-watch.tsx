@@ -728,6 +728,7 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
   const style = {
     "--played-percent": `${Math.min(playedPercent, 100)}%`,
     "--buffered-percent": `${Math.min(bufferedPercent, 100)}%`,
+    "--hover-percent": `${hoverPosition?.percent ?? 0}%`,
   } as CSSProperties
 
   function updateHoverPosition(event: React.PointerEvent<HTMLDivElement>) {
