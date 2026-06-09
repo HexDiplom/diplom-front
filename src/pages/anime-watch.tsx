@@ -716,6 +716,10 @@ function WatchOverlay({
 }
 
 function PlayerProgress({ player }: { player: ShakaVideoController }) {
+  const [hoverPosition, setHoverPosition] = useState<{
+    percent: number
+    time: number
+  } | null>(null)
   const duration = Math.max(player.duration, 0)
   const playedPercent = duration ? (player.currentTime / duration) * 100 : 0
   const bufferedPercent = duration
@@ -726,18 +730,47 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
     "--buffered-percent": `${Math.min(bufferedPercent, 100)}%`,
   } as CSSProperties
 
+  function updateHoverPosition(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch" || duration === 0) {
+      setHoverPosition(null)
+      return
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const percent = Math.max(0, Math.min((event.clientX - bounds.left) / bounds.width, 1))
+    setHoverPosition({ percent: percent * 100, time: percent * duration })
+  }
+
   return (
-    <input
-      type="range"
-      min="0"
-      max={duration || 0}
-      step="0.1"
-      value={Math.min(player.currentTime, duration || 0)}
-      aria-label="Позиция воспроизведения"
-      className="anime-player-progress w-full"
-      style={style}
-      onChange={(event) => player.seekTo(Number(event.target.value))}
-    />
+    <div
+      className="anime-player-progress-area relative h-5 w-full"
+      onPointerEnter={updateHoverPosition}
+      onPointerMove={updateHoverPosition}
+      onPointerLeave={() => setHoverPosition(null)}
+    >
+      {hoverPosition && (
+        <span
+          className="anime-player-progress-tooltip"
+          style={{
+            left: `clamp(2.25rem, ${hoverPosition.percent}%, calc(100% - 2.25rem))`,
+          }}
+        >
+          {formatPlayerTime(hoverPosition.time)}
+        </span>
+      )}
+      <div className="anime-player-progress-track" style={style} />
+      <input
+        type="range"
+        min="0"
+        max={duration || 0}
+        step="0.1"
+        value={Math.min(player.currentTime, duration || 0)}
+        aria-label="Позиция воспроизведения"
+        className="anime-player-progress absolute inset-0 h-full w-full"
+        disabled={duration === 0}
+        onChange={(event) => player.seekTo(Number(event.target.value))}
+      />
+    </div>
   )
 }
 
