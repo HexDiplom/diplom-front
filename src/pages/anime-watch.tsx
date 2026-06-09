@@ -1366,7 +1366,7 @@ function EpisodePanel({
         </label>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="grid gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2">
             {filteredEpisodes.map((episode) => {
               const isActive = currentEpisode?.id === episode.id
               const progress = progressByEpisode.get(episode.id)
@@ -1377,7 +1377,7 @@ function EpisodePanel({
                   ref={isActive ? activeEpisodeRef : undefined}
                   type="button"
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition hover:bg-white/8",
+                    "flex min-w-0 w-full items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition hover:bg-white/8",
                     isActive && "border-white/15 bg-white/10",
                   )}
                   onClick={() => onEpisodeSelect(episode.id)}
