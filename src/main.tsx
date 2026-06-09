@@ -21,6 +21,7 @@ import AdminEpisodeVideosPage from '@/pages/admin/episode-videos'
 import AnimeDetailPage from '@/pages/anime-detail'
 import AnimeWatchPage from '@/pages/anime-watch'
 import FavoritesPage from '@/pages/favorites'
+import CatalogPage from '@/pages/catalog'
 import { AuthPromptProvider } from '@/components/auth-prompt'
 
 const queryClient = new QueryClient()
@@ -34,6 +35,7 @@ createRoot(document.getElementById('root')!).render(
             <Routes>
               <Route element={<RootLayout />}>
                 <Route index element={<Home />}/>
+                <Route path="anime" element={<CatalogPage />} />
                 <Route path="anime/:id" element={<AnimeDetailPage />} />
                 <Route path="favorites" element={<FavoritesPage />} />
                 <Route path="admin" element={<AdminLayout />}>
