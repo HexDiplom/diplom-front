@@ -51,6 +51,17 @@ export type AnimeListQueryParams = {
   limit?: number
   sortBy?: AnimeSortBy
   sortOrder?: AnimeSortOrder
+  search?: string
+  status?: AnimeStatus[]
+  format?: AnimeFormat[]
+  season?: AnimeSeason[]
+  seasonYear?: number[]
+  genres?: string[]
+}
+
+export type AnimeFilterOptions = {
+  genres: string[]
+  seasonYears: number[]
 }
 
 export type AnimeTitle = {
@@ -157,13 +168,21 @@ export type ListResponse<T> = {
 
 export type AnimeListResponse = ListResponse<Anime>
 
-type QueryValue = string | number | boolean | null | undefined
+type QueryValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Array<string | number | boolean>
 
 function buildUrl(path: string, query?: object) {
   const url = new URL(path, import.meta.env.VITE_API_URL)
 
   Object.entries(query ?? {}).forEach(([key, value]: [string, QueryValue]) => {
-    if (value !== undefined && value !== null && value !== "") {
+    if (Array.isArray(value)) {
+      value.forEach((item) => url.searchParams.append(key, String(item)))
+    } else if (value !== undefined && value !== null && value !== "") {
       url.searchParams.set(key, String(value))
     }
   })
@@ -189,6 +208,10 @@ async function getJson<T>(path: string, query?: object) {
 
 export function getAnimeList(params?: AnimeListQueryParams) {
   return getJson<AnimeListResponse>("/v1/anime/", params)
+}
+
+export function getAnimeFilterOptions() {
+  return getJson<AnimeFilterOptions>("/v1/anime/filter-options")
 }
 
 export function getAnime(id: number | string) {

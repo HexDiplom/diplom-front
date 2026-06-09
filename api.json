@@ -294,6 +294,115 @@
                 "desc"
               ]
             }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "FINISHED",
+                  "RELEASING",
+                  "NOT_YET_RELEASED",
+                  "CANCELLED",
+                  "HIATUS"
+                ]
+              }
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "TV",
+                  "TV_SHORT",
+                  "MOVIE",
+                  "SPECIAL",
+                  "OVA",
+                  "ONA",
+                  "OTHER"
+                ]
+              }
+            }
+          },
+          {
+            "name": "season",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "WINTER",
+                  "SPRING",
+                  "SUMMER",
+                  "FALL"
+                ]
+              }
+            }
+          },
+          {
+            "name": "seasonYear",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "minimum": -2147483648,
+                "maximum": 2147483647,
+                "anyOf": [
+                  {
+                    "format": "integer",
+                    "default": 0,
+                    "type": "string"
+                  },
+                  {
+                    "minimum": -2147483648,
+                    "maximum": 2147483647,
+                    "type": "integer"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "genres",
+            "in": "query",
+            "required": false,
+            "style": "form",
+            "explode": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              }
+            }
           }
         ],
         "operationId": "getV1Anime"
@@ -1397,6 +1506,53 @@
           }
         },
         "operationId": "postV1Anime"
+      }
+    },
+    "/v1/anime/filter-options": {
+      "get": {
+        "tags": [
+          "Anime"
+        ],
+        "responses": {
+          "200": {
+            "description": "Response for status 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "genres",
+                    "seasonYears"
+                  ],
+                  "properties": {
+                    "genres": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "seasonYears": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "format": "integer",
+                            "default": 0,
+                            "type": "string"
+                          },
+                          {
+                            "type": "integer"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getV1AnimeFilter-options"
       }
     },
     "/v1/anime/{id}": {
