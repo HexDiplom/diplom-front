@@ -9,6 +9,11 @@ import {
 import { AlertCircle, Loader2, Play } from "lucide-react"
 import shaka from "shaka-player/dist/shaka-player.compiled"
 
+import {
+  getPlayerPreferences,
+  updatePlayerPreferences,
+  type PlayerPreferences,
+} from "@/lib/player-preferences"
 import { cn } from "@/lib/utils"
 import "@/styles/shaka-player.css"
 
@@ -122,6 +127,8 @@ export default function ShakaVideo({
   const variantTracksRef = useRef<Map<number, shaka.extern.Track>>(new Map())
   const textTracksRef = useRef<Map<number, shaka.extern.TextTrack>>(new Map())
   const startTimeRef = useRef(startTime)
+  const [initialPreferences] = useState(getPlayerPreferences)
+  const preferencesRef = useRef(initialPreferences)
   const [isRuntimeReady, setIsRuntimeReady] = useState(false)
   const [status, setStatus] = useState<PlayerStatus>("idle")
   const [loadedManifestUrl, setLoadedManifestUrl] = useState<string | null>(null)
@@ -191,6 +198,33 @@ export default function ShakaVideo({
     }))
   }, [])
 
+  const applyTrackPreferences = useCallback(() => {
+    const player = playerRef.current
+
+    if (!player) {
+      return
+    }
+
+    const preferences = preferencesRef.current
+    const variants = getQualityTracks(player.getVariantTracks())
+    const texts = player.getTextTracks()
+
+    if (preferences.quality === "auto") {
+      player.configure({ abr: { enabled: true } })
+    } else {
+      const track = findClosestQualityTrack(variants, preferences.quality)
+
+      if (track) {
+        player.configure({ abr: { enabled: false } })
+        player.selectVariantTrack(track, true, 5)
+      }
+    }
+
+    const textTrack = findPreferredTextTrack(texts, preferences.subtitles)
+    player.selectTextTrack(textTrack)
+    syncTracks()
+  }, [syncTracks])
+
   useEffect(() => {
     const video = videoRef.current
     const container = containerRef.current
@@ -219,6 +253,7 @@ export default function ShakaVideo({
     }
 
     const player = new shaka.Player(video)
+    applyMediaPreferences(video, preferencesRef.current)
     const handleError = (event: Event) => {
       const detail = "detail" in event ? (event as CustomEvent<unknown>).detail : event
 
@@ -320,7 +355,8 @@ export default function ShakaVideo({
         if (!isCancelled) {
           setStatus("loaded")
           setLoadedManifestUrl(manifestUrl)
-          syncTracks()
+          applyMediaPreferences(video, preferencesRef.current)
+          applyTrackPreferences()
           syncMediaState()
 
           if (shouldResumePlayback) {
@@ -341,7 +377,7 @@ export default function ShakaVideo({
     return () => {
       isCancelled = true
     }
-  }, [isRuntimeReady, manifestUrl, sourceReady, syncMediaState, syncTracks])
+  }, [applyTrackPreferences, isRuntimeReady, manifestUrl, sourceReady, syncMediaState])
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current
@@ -391,6 +427,10 @@ export default function ShakaVideo({
 
     video.volume = Math.max(0, Math.min(volume, 1))
     video.muted = video.volume === 0
+    preferencesRef.current = updatePlayerPreferences({
+      volume: video.volume,
+      muted: video.muted,
+    })
   }, [])
 
   const toggleMute = useCallback(() => {
@@ -398,6 +438,7 @@ export default function ShakaVideo({
 
     if (video) {
       video.muted = !video.muted
+      preferencesRef.current = updatePlayerPreferences({ muted: video.muted })
     }
   }, [])
 
@@ -406,6 +447,7 @@ export default function ShakaVideo({
 
     if (video) {
       video.playbackRate = rate
+      preferencesRef.current = updatePlayerPreferences({ playbackRate: video.playbackRate })
     }
   }, [])
 
@@ -419,6 +461,7 @@ export default function ShakaVideo({
 
       if (quality === "auto") {
         player.configure({ abr: { enabled: true } })
+        preferencesRef.current = updatePlayerPreferences({ quality: "auto" })
       } else {
         const track = variantTracksRef.current.get(quality)
 
@@ -428,6 +471,9 @@ export default function ShakaVideo({
 
         player.configure({ abr: { enabled: false } })
         player.selectVariantTrack(track, true, 5)
+        preferencesRef.current = updatePlayerPreferences({
+          quality: track.height ?? preferencesRef.current.quality,
+        })
       }
 
       syncTracks()
@@ -443,7 +489,16 @@ export default function ShakaVideo({
         return
       }
 
-      player.selectTextTrack(trackId === null ? null : textTracksRef.current.get(trackId))
+      const track = trackId === null ? undefined : textTracksRef.current.get(trackId)
+      player.selectTextTrack(track ?? null)
+      preferencesRef.current = updatePlayerPreferences({
+        subtitles: track
+          ? {
+              language: track.language,
+              label: track.label,
+            }
+          : null,
+      })
       syncTracks()
     },
     [syncTracks],
@@ -594,6 +649,48 @@ function getQualityTracks(tracks: shaka.extern.Track[]) {
 
   return Array.from(tracksByHeight.values()).sort(
     (left, right) => (right.height ?? 0) - (left.height ?? 0),
+  )
+}
+
+function applyMediaPreferences(video: HTMLVideoElement | null, preferences: PlayerPreferences) {
+  if (!video) {
+    return
+  }
+
+  video.volume = preferences.volume
+  video.muted = preferences.muted
+  video.playbackRate = preferences.playbackRate
+}
+
+function findClosestQualityTrack(tracks: shaka.extern.Track[], preferredHeight: number) {
+  return tracks.reduce<shaka.extern.Track | undefined>((closest, track) => {
+    if (track.height === null) {
+      return closest
+    }
+
+    if (!closest?.height) {
+      return track
+    }
+
+    return Math.abs(track.height - preferredHeight) < Math.abs(closest.height - preferredHeight)
+      ? track
+      : closest
+  }, undefined)
+}
+
+function findPreferredTextTrack(
+  tracks: shaka.extern.TextTrack[],
+  preference: PlayerPreferences["subtitles"],
+) {
+  if (!preference) {
+    return null
+  }
+
+  return (
+    tracks.find(
+      (track) =>
+        track.language === preference.language && track.label === preference.label,
+    ) ?? null
   )
 }
 

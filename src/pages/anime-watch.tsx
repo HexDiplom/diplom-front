@@ -42,6 +42,7 @@ import type { ShakaVideoController } from "@/components/player/shaka-video"
 import { useAnimeDetail, useAnimeEpisodes, useEpisode } from "@/hooks/use-anime-detail"
 import { useWatchHistory, userActivityKeys } from "@/hooks/use-user-activity"
 import { authClient } from "@/lib/auth-client"
+import { getPlayerPreferences, updatePlayerPreferences } from "@/lib/player-preferences"
 import { cn } from "@/lib/utils"
 
 const ShakaVideo = lazy(() => import("@/components/player/shaka-video"))
@@ -62,6 +63,9 @@ export default function AnimeWatchPage() {
   const historyQuery = useWatchHistory(isAuthenticated)
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
+  const [preferredVoiceoverName, setPreferredVoiceoverName] = useState(
+    () => getPlayerPreferences().voiceoverName,
+  )
   const [isEpisodePanelOpen, setIsEpisodePanelOpen] = useState(false)
 
   const episodes = useMemo(
@@ -87,7 +91,7 @@ export default function AnimeWatchPage() {
   const nextEpisode =
     currentEpisodeIndex >= 0 ? displayedEpisodes[currentEpisodeIndex + 1] : undefined
   const videos = currentEpisode?.videos ?? []
-  const currentVideo = getEffectiveVideo(videos, selectedVideoId)
+  const currentVideo = getEffectiveVideo(videos, selectedVideoId, preferredVoiceoverName)
   const isPlaybackSourceReady =
     !isSessionPending && (!isAuthenticated || !historyQuery.isPending)
   const progressByEpisode = useMemo(
@@ -145,6 +149,18 @@ export default function AnimeWatchPage() {
       next.set("episode", episodeId)
       return next
     })
+  }
+
+  function selectVideo(videoId: string) {
+    const video = videos.find((item) => item.id === videoId)
+
+    setSelectedVideoId(videoId)
+
+    if (video) {
+      const voiceoverName = video.voiceoverName ?? ""
+      setPreferredVoiceoverName(voiceoverName)
+      updatePlayerPreferences({ voiceoverName })
+    }
   }
 
   if (!validId) {
@@ -215,7 +231,7 @@ export default function AnimeWatchPage() {
                 onPanelOpen={() => setIsEpisodePanelOpen(true)}
                 onPanelClose={() => setIsEpisodePanelOpen(false)}
                 onEpisodeSelect={selectEpisode}
-                onVideoSelect={setSelectedVideoId}
+                onVideoSelect={selectVideo}
                 onLoadMore={() => episodesQuery.fetchNextPage()}
               />
             </>
@@ -1224,9 +1240,17 @@ function sortEpisodes(episodes: Episode[]) {
   )
 }
 
-function getEffectiveVideo(videos: EpisodeVideo[], selectedId: string | null) {
+function getEffectiveVideo(
+  videos: EpisodeVideo[],
+  selectedId: string | null,
+  preferredVoiceoverName: string | null,
+) {
   return (
     videos.find((video) => video.id === selectedId && isPlayableVideo(video)) ??
+    videos.find(
+      (video) =>
+        (video.voiceoverName ?? "") === preferredVoiceoverName && isPlayableVideo(video),
+    ) ??
     videos.find(isPlayableVideo)
   )
 }
