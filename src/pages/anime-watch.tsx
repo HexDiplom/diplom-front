@@ -774,6 +774,15 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
     setPreviewTime(null)
   }
 
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return
+    }
+
+    event.preventDefault()
+    player.seekTo(player.currentTime + (event.key === "ArrowLeft" ? -10 : 10))
+  }
+
   return (
     <div
       className="anime-player-progress-area relative h-5 w-full"
@@ -806,6 +815,7 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
         onLostPointerCapture={handlePointerCancel}
+        onKeyDown={handleKeyDown}
       />
     </div>
   )
