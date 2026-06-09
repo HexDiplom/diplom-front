@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { AlertCircle, Loader2, Play } from "lucide-react"
+import { AlertCircle, Loader2, Play, RotateCcw, X } from "lucide-react"
 import shaka from "shaka-player/dist/shaka-player.compiled"
 
 import {
@@ -130,12 +130,17 @@ export default function ShakaVideo({
   const variantTracksRef = useRef<Map<number, shaka.extern.Track>>(new Map())
   const textTracksRef = useRef<Map<number, shaka.extern.TextTrack>>(new Map())
   const startTimeRef = useRef(startTime)
+  const shouldResumePlaybackRef = useRef(false)
+  const hasPlaybackErrorRef = useRef(false)
   const [initialPreferences] = useState(getPlayerPreferences)
   const preferencesRef = useRef(initialPreferences)
   const [isRuntimeReady, setIsRuntimeReady] = useState(false)
+  const [reloadRequest, setReloadRequest] = useState(0)
   const [status, setStatus] = useState<PlayerStatus>("idle")
   const [loadedManifestUrl, setLoadedManifestUrl] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [criticalError, setCriticalError] = useState<string | null>(null)
+  const [recoverableError, setRecoverableError] = useState<string | null>(null)
+  const [isCriticalErrorDismissed, setIsCriticalErrorDismissed] = useState(false)
   const [playback, setPlayback] = useState(initialPlaybackState)
 
   useEffect(() => {
@@ -248,7 +253,9 @@ export default function ShakaVideo({
         }
 
         setStatus("error")
-        setError("Этот браузер не поддерживает воспроизведение потокового видео.")
+        hasPlaybackErrorRef.current = true
+        setCriticalError("Этот браузер не поддерживает воспроизведение потокового видео.")
+        setIsCriticalErrorDismissed(false)
       })
 
       return () => {
@@ -261,11 +268,42 @@ export default function ShakaVideo({
     const handleError = (event: Event) => {
       const detail = "detail" in event ? (event as CustomEvent<unknown>).detail : event
 
+      if (isRecoverableShakaError(detail)) {
+        hasPlaybackErrorRef.current = true
+        setRecoverableError(formatRecoverableShakaError(detail))
+        return
+      }
+
       setStatus("error")
-      setError(formatShakaError(detail))
+      hasPlaybackErrorRef.current = true
+      setRecoverableError(null)
+      setCriticalError(formatShakaError(detail))
+      setIsCriticalErrorDismissed(false)
     }
     const handleBuffering = () => {
-      setPlayback((current) => ({ ...current, isBuffering: player.isBuffering() }))
+      const isBuffering = player.isBuffering()
+      setPlayback((current) => ({ ...current, isBuffering }))
+
+      if (!isBuffering) {
+        setRecoverableError(null)
+      }
+    }
+    const handleRecovery = () => {
+      if (
+        !hasPlaybackErrorRef.current ||
+        video.paused ||
+        video.ended ||
+        player.isBuffering()
+      ) {
+        return
+      }
+
+      hasPlaybackErrorRef.current = false
+      setStatus((current) => (current === "error" ? "loaded" : current))
+      setLoadedManifestUrl(player.getAssetUri())
+      setCriticalError(null)
+      setRecoverableError(null)
+      setIsCriticalErrorDismissed(false)
     }
     const handleFullscreenChange = () => syncMediaState()
     const mediaEvents = [
@@ -295,6 +333,8 @@ export default function ShakaVideo({
     player.addEventListener("buffering", handleBuffering)
     trackEvents.forEach((eventName) => player.addEventListener(eventName, syncTracks))
     mediaEvents.forEach((eventName) => video.addEventListener(eventName, syncMediaState))
+    video.addEventListener("playing", handleRecovery)
+    video.addEventListener("timeupdate", handleRecovery)
     document.addEventListener("fullscreenchange", handleFullscreenChange)
 
     queueMicrotask(() => {
@@ -313,6 +353,8 @@ export default function ShakaVideo({
       player.removeEventListener("buffering", handleBuffering)
       trackEvents.forEach((eventName) => player.removeEventListener(eventName, syncTracks))
       mediaEvents.forEach((eventName) => video.removeEventListener(eventName, syncMediaState))
+      video.removeEventListener("playing", handleRecovery)
+      video.removeEventListener("timeupdate", handleRecovery)
       document.removeEventListener("fullscreenchange", handleFullscreenChange)
       playerRef.current = null
       void player.destroy()
@@ -330,7 +372,8 @@ export default function ShakaVideo({
 
     async function loadSource() {
       const video = videoRef.current
-      const shouldResumePlayback = Boolean(video && !video.paused && !video.ended)
+      const shouldResumePlayback =
+        shouldResumePlaybackRef.current || Boolean(video && !video.paused && !video.ended)
 
       await player?.unload()
       setLoadedManifestUrl(null)
@@ -341,7 +384,10 @@ export default function ShakaVideo({
 
       if (!manifestUrl) {
         setStatus("idle")
-        setError(null)
+        hasPlaybackErrorRef.current = false
+        setCriticalError(null)
+        setRecoverableError(null)
+        setIsCriticalErrorDismissed(false)
         setPlayback((current) => ({
           ...initialPlaybackState,
           canPictureInPicture: current.canPictureInPicture,
@@ -351,7 +397,10 @@ export default function ShakaVideo({
       }
 
       setStatus("loading")
-      setError(null)
+      hasPlaybackErrorRef.current = false
+      setCriticalError(null)
+      setRecoverableError(null)
+      setIsCriticalErrorDismissed(false)
 
       try {
         await player?.load(manifestUrl, startTimeRef.current)
@@ -370,8 +419,10 @@ export default function ShakaVideo({
       } catch (caughtError) {
         if (!isCancelled) {
           setStatus("error")
+          hasPlaybackErrorRef.current = true
           setLoadedManifestUrl(null)
-          setError(formatShakaError(caughtError))
+          setCriticalError(formatShakaError(caughtError))
+          setIsCriticalErrorDismissed(false)
         }
       }
     }
@@ -381,7 +432,14 @@ export default function ShakaVideo({
     return () => {
       isCancelled = true
     }
-  }, [applyTrackPreferences, isRuntimeReady, manifestUrl, sourceReady, syncMediaState])
+  }, [
+    applyTrackPreferences,
+    isRuntimeReady,
+    manifestUrl,
+    reloadRequest,
+    sourceReady,
+    syncMediaState,
+  ])
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current
@@ -391,11 +449,15 @@ export default function ShakaVideo({
     }
 
     if (video.paused) {
+      shouldResumePlaybackRef.current = true
       void video.play().catch((caughtError: unknown) => {
         setStatus("error")
-        setError(formatShakaError(caughtError))
+        hasPlaybackErrorRef.current = true
+        setCriticalError(formatShakaError(caughtError))
+        setIsCriticalErrorDismissed(false)
       })
     } else {
+      shouldResumePlaybackRef.current = false
       video.pause()
     }
   }, [])
@@ -404,9 +466,29 @@ export default function ShakaVideo({
     const video = videoRef.current
 
     if (video?.paused) {
+      shouldResumePlaybackRef.current = true
       void video.play().catch(() => undefined)
     }
   }, [])
+
+  const retryCurrentSource = useCallback(() => {
+    const video = videoRef.current
+
+    if (!manifestUrl) {
+      return
+    }
+
+    if (video && Number.isFinite(video.currentTime)) {
+      startTimeRef.current = video.currentTime
+    }
+
+    setRecoverableError(null)
+    setCriticalError(null)
+    setIsCriticalErrorDismissed(false)
+    hasPlaybackErrorRef.current = false
+    setStatus("loading")
+    setReloadRequest((current) => current + 1)
+  }, [manifestUrl])
 
   const seekTo = useCallback((time: number) => {
     const video = videoRef.current
@@ -593,11 +675,17 @@ export default function ShakaVideo({
       )}
 
       {sourceReady && status === "error" && (
-        <PlayerMessage
-          icon={<AlertCircle className="size-8 text-destructive" />}
-          text={error || "Не удалось загрузить видео"}
-        />
+        !isCriticalErrorDismissed && (
+          <CriticalErrorMessage
+            text={criticalError || "Не удалось загрузить видео"}
+            canRetry={Boolean(manifestUrl)}
+            onRetry={retryCurrentSource}
+            onClose={() => setIsCriticalErrorDismissed(true)}
+          />
+        )
       )}
+
+      {recoverableError && <RecoverableErrorNotice text={recoverableError} />}
 
       {/* Controller callbacks access refs only after user interaction. */}
       {/* eslint-disable-next-line react-hooks/refs */}
@@ -624,6 +712,73 @@ function PlayerMessage({
     >
       {icon}
       <span>{text}</span>
+    </div>
+  )
+}
+
+function RecoverableErrorNotice({ text }: { text: string }) {
+  return (
+    <div
+      role="status"
+      className="pointer-events-none absolute left-1/2 top-4 z-40 flex max-w-[min(90%,32rem)] -translate-x-1/2 items-center gap-2 rounded-full border border-amber-300/20 bg-zinc-950/90 px-4 py-2.5 text-xs font-semibold text-white shadow-2xl backdrop-blur-xl"
+    >
+      <AlertCircle className="size-4 shrink-0 text-amber-300" />
+      <span>{text}</span>
+    </div>
+  )
+}
+
+function CriticalErrorMessage({
+  text,
+  canRetry,
+  onRetry,
+  onClose,
+}: {
+  text: string
+  canRetry: boolean
+  onRetry: () => void
+  onClose: () => void
+}) {
+  return (
+    <div
+      role="alertdialog"
+      aria-modal="true"
+      aria-label="Ошибка воспроизведения"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 px-5 text-center text-white backdrop-blur-[2px]"
+    >
+      <button
+        type="button"
+        aria-label="Закрыть сообщение об ошибке"
+        className="absolute right-4 top-4 flex size-10 items-center justify-center rounded-full bg-white/10 text-white/75 transition hover:bg-white/20 hover:text-white"
+        onClick={onClose}
+      >
+        <X className="size-5" />
+      </button>
+
+      <div className="flex max-w-md flex-col items-center">
+        <AlertCircle className="size-10 text-red-400" />
+        <p className="mt-4 text-base font-bold">Не удалось продолжить воспроизведение</p>
+        <p className="mt-2 text-sm text-white/60">{text}</p>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          {canRetry && (
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-white/85"
+              onClick={onRetry}
+            >
+              <RotateCcw className="size-4" />
+              Повторить
+            </button>
+          )}
+          <button
+            type="button"
+            className="rounded-full px-4 py-2 text-xs font-semibold text-white/55 transition hover:bg-white/10 hover:text-white"
+            onClick={onClose}
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -703,9 +858,33 @@ function formatQualityLabel(track: shaka.extern.Track) {
 }
 
 function formatShakaError(error: unknown) {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    return `Не удалось загрузить видео. Код ошибки: ${String(error.code)}`
+  const code = getShakaErrorCode(error)
+
+  if (code) {
+    return `Не удалось загрузить видео. Код ошибки: ${code}`
   }
 
   return "Не удалось загрузить видео."
+}
+
+function formatRecoverableShakaError(error: unknown) {
+  const code = getShakaErrorCode(error)
+  const message = "Проблемы с соединением. Пытаемся восстановить воспроизведение."
+
+  return code ? `${message} Код ошибки: ${code}` : message
+}
+
+function getShakaErrorCode(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : null
+}
+
+function isRecoverableShakaError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "severity" in error &&
+    error.severity === shaka.util.Error.Severity.RECOVERABLE
+  )
 }
