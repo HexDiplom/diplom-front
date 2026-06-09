@@ -129,3 +129,17 @@
     @apply font-sans;
   }
 }
+
+@keyframes anime-player-end-countdown-fill {
+  from {
+    stroke-dashoffset: 100;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.anime-player-end-countdown {
+  animation: anime-player-end-countdown-fill 5s linear forwards;
+}

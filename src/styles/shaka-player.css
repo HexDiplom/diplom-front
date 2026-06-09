@@ -6,14 +6,58 @@
 }
 
 .anime-player-progress {
+  cursor: pointer;
+  background: transparent;
+}
+
+.anime-player-progress:disabled {
+  cursor: default;
+}
+
+.anime-player-progress-track {
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
   height: 3px;
+  border-radius: 999px;
   background:
     linear-gradient(
       to right,
       #ef4444 0 var(--played-percent),
       rgb(255 255 255 / 45%) var(--played-percent) var(--buffered-percent),
-      rgb(255 255 255 / 22%) var(--buffered-percent) 100%
+      rgb(255 255 255 / 32%) var(--buffered-percent) var(--hover-percent),
+      rgb(255 255 255 / 22%) var(--hover-percent) 100%
     );
+  transform: translateY(-50%);
+  transition: height 150ms ease;
+}
+
+.anime-player-progress-area:hover .anime-player-progress-track,
+.anime-player-progress-area:has(.anime-player-progress:focus-visible) .anime-player-progress-track {
+  height: 6px;
+}
+
+.anime-player-progress-tooltip {
+  pointer-events: none;
+  position: absolute;
+  bottom: calc(100% + 4px);
+  z-index: 1;
+  min-width: max-content;
+  border-radius: 4px;
+  background: #ef4444;
+  padding: 3px 5px;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateX(-50%);
+}
+
+.anime-player-progress::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
 }
 
 .anime-player-volume {
@@ -34,8 +78,12 @@
   transition: opacity 150ms ease;
 }
 
-.anime-player-progress:hover::-webkit-slider-thumb,
-.anime-player-progress:focus::-webkit-slider-thumb,
+.anime-player-progress::-webkit-slider-thumb {
+  transform: translateY(4px);
+}
+
+.anime-player-progress-area:hover .anime-player-progress::-webkit-slider-thumb,
+.anime-player-progress:focus-visible::-webkit-slider-thumb,
 .anime-player-volume:hover::-webkit-slider-thumb,
 .anime-player-volume:focus::-webkit-slider-thumb {
   opacity: 1;
@@ -49,4 +97,22 @@
   border-radius: 999px;
   background: white;
   cursor: pointer;
+}
+
+.anime-player-progress::-moz-range-track {
+  background: transparent;
+}
+
+.anime-player-progress::-moz-range-progress {
+  background: transparent;
+}
+
+.anime-player-progress::-moz-range-thumb {
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.anime-player-progress-area:hover .anime-player-progress::-moz-range-thumb,
+.anime-player-progress:focus-visible::-moz-range-thumb {
+  opacity: 1;
 }

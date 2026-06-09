@@ -31,7 +31,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react"
-import { Link, useParams, useSearchParams } from "react-router"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 
 import type { Anime, Episode, EpisodeVideo, ListResponse } from "@/api/anime"
 import {
@@ -42,6 +42,7 @@ import type { ShakaVideoController } from "@/components/player/shaka-video"
 import { useAnimeDetail, useAnimeEpisodes, useEpisode } from "@/hooks/use-anime-detail"
 import { useWatchHistory, userActivityKeys } from "@/hooks/use-user-activity"
 import { authClient } from "@/lib/auth-client"
+import { getPlayerPreferences, updatePlayerPreferences } from "@/lib/player-preferences"
 import { cn } from "@/lib/utils"
 
 const ShakaVideo = lazy(() => import("@/components/player/shaka-video"))
@@ -54,14 +55,19 @@ type PlaybackSnapshot = {
 
 export default function AnimeWatchPage() {
   const { id } = useParams()
-  const { data: session } = authClient.useSession()
+  const navigate = useNavigate()
+  const { data: session, isPending: isSessionPending } = authClient.useSession()
   const validId = id && /^\d+$/.test(id) ? id : undefined
   const isAuthenticated = Boolean(session?.user)
   const animeQuery = useAnimeDetail(validId)
   const episodesQuery = useAnimeEpisodes(validId)
+  const fetchNextEpisodesPage = episodesQuery.fetchNextPage
   const historyQuery = useWatchHistory(isAuthenticated)
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
+  const [preferredVoiceoverName, setPreferredVoiceoverName] = useState(
+    () => getPlayerPreferences().voiceoverName,
+  )
   const [isEpisodePanelOpen, setIsEpisodePanelOpen] = useState(false)
 
   const episodes = useMemo(
@@ -87,7 +93,9 @@ export default function AnimeWatchPage() {
   const nextEpisode =
     currentEpisodeIndex >= 0 ? displayedEpisodes[currentEpisodeIndex + 1] : undefined
   const videos = currentEpisode?.videos ?? []
-  const currentVideo = getEffectiveVideo(videos, selectedVideoId)
+  const currentVideo = getEffectiveVideo(videos, selectedVideoId, preferredVoiceoverName)
+  const isPlaybackSourceReady =
+    !isSessionPending && (!isAuthenticated || !historyQuery.isPending)
   const progressByEpisode = useMemo(
     () =>
       new Map(
@@ -97,6 +105,11 @@ export default function AnimeWatchPage() {
       ),
     [historyQuery.data, validId],
   )
+  const savedProgress = currentEpisode ? progressByEpisode.get(currentEpisode.id) : undefined
+  const startTime =
+    savedProgress && !savedProgress.completed && savedProgress.positionSeconds > 0
+      ? savedProgress.positionSeconds
+      : 0
 
   useEffect(() => {
     if (!firstEpisodeId) {
@@ -140,6 +153,22 @@ export default function AnimeWatchPage() {
     })
   }
 
+  function selectVideo(videoId: string) {
+    const video = videos.find((item) => item.id === videoId)
+
+    setSelectedVideoId(videoId)
+
+    if (video) {
+      const voiceoverName = video.voiceoverName ?? ""
+      setPreferredVoiceoverName(voiceoverName)
+      updatePlayerPreferences({ voiceoverName })
+    }
+  }
+
+  const loadMoreEpisodes = useCallback(async () => {
+    await fetchNextEpisodesPage()
+  }, [fetchNextEpisodesPage])
+
   if (!validId) {
     return <WatchError text="ID аниме в адресе должен быть числом." />
   }
@@ -175,6 +204,8 @@ export default function AnimeWatchPage() {
       <Suspense fallback={<div className="h-full w-full animate-pulse bg-zinc-950" />}>
         <ShakaVideo
           manifestUrl={currentVideo?.manifestUrl}
+          sourceReady={isPlaybackSourceReady}
+          startTime={startTime}
           poster={poster}
           title={`${animeTitle}, эпизод ${currentEpisode?.number ?? ""}`}
           className="h-dvh w-full aspect-auto rounded-none shadow-none ring-0"
@@ -185,7 +216,6 @@ export default function AnimeWatchPage() {
                 anime={animeQuery.data}
                 episode={currentEpisode}
                 manifestUrl={currentVideo?.manifestUrl}
-                savedProgress={currentEpisode ? progressByEpisode.get(currentEpisode.id) : undefined}
                 enabled={isAuthenticated}
               />
               <WatchOverlay
@@ -207,8 +237,9 @@ export default function AnimeWatchPage() {
                 onPanelOpen={() => setIsEpisodePanelOpen(true)}
                 onPanelClose={() => setIsEpisodePanelOpen(false)}
                 onEpisodeSelect={selectEpisode}
-                onVideoSelect={setSelectedVideoId}
-                onLoadMore={() => episodesQuery.fetchNextPage()}
+                onVideoSelect={selectVideo}
+                onLoadMore={loadMoreEpisodes}
+                onReturnToAnime={() => navigate(`/anime/${validId}`)}
               />
             </>
           )}
@@ -223,14 +254,12 @@ function PlaybackActivity({
   anime,
   episode,
   manifestUrl,
-  savedProgress,
   enabled,
 }: {
   player: ShakaVideoController
   anime?: Anime
   episode?: Episode
   manifestUrl?: string | null
-  savedProgress?: { positionSeconds: number; completed: boolean }
   enabled: boolean
 }) {
   const queryClient = useQueryClient()
@@ -347,13 +376,8 @@ function PlaybackActivity({
     }
 
     startedEpisodeRef.current = episode.id
-
-    if (savedProgress && !savedProgress.completed && savedProgress.positionSeconds > 0) {
-      player.seekTo(savedProgress.positionSeconds)
-    }
-
     player.play()
-  }, [episode, manifestUrl, player, player.loadedManifestUrl, player.status, savedProgress])
+  }, [episode, manifestUrl, player, player.loadedManifestUrl, player.status])
 
   useEffect(() => {
     if (!enabled || !episode || !player.isPlaying || player.currentTime < 15) {
@@ -430,6 +454,7 @@ function WatchOverlay({
   onEpisodeSelect,
   onVideoSelect,
   onLoadMore,
+  onReturnToAnime,
 }: {
   player: ShakaVideoController
   animeId: string
@@ -450,12 +475,22 @@ function WatchOverlay({
   onPanelClose: () => void
   onEpisodeSelect: (id: string) => void
   onVideoSelect: (id: string) => void
-  onLoadMore: () => void
+  onLoadMore: () => Promise<void>
+  onReturnToAnime: () => void
 }) {
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestedNextPageForCountRef = useRef<number | null>(null)
   const [isControlsVisible, setIsControlsVisible] = useState(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const controlsLocked = !player.isPlaying || player.isBuffering || isPanelOpen || isSettingsOpen
+  const [isEndScreenDismissed, setIsEndScreenDismissed] = useState(false)
+  const isEndScreenVisible = player.isEnded && !isEndScreenDismissed
+  const isResolvingNextEpisode = !nextEpisode && (hasMoreEpisodes || isLoadingMore)
+  const controlsLocked =
+    !player.isPlaying ||
+    player.isBuffering ||
+    isPanelOpen ||
+    isSettingsOpen ||
+    isEndScreenVisible
   const controlsShown = controlsLocked || isControlsVisible
 
   const clearHideTimer = useCallback(() => {
@@ -489,8 +524,80 @@ function WatchOverlay({
   }, [clearHideTimer, controlsLocked, scheduleHide])
 
   useEffect(() => {
+    if (!player.isEnded && isEndScreenDismissed) {
+      queueMicrotask(() => setIsEndScreenDismissed(false))
+    }
+  }, [isEndScreenDismissed, player.isEnded])
+
+  useEffect(() => {
+    if (!isEndScreenVisible) {
+      requestedNextPageForCountRef.current = null
+    }
+  }, [isEndScreenVisible])
+
+  useEffect(() => {
+    if (
+      !isEndScreenVisible ||
+      nextEpisode ||
+      !hasMoreEpisodes ||
+      isLoadingMore ||
+      requestedNextPageForCountRef.current === episodes.length
+    ) {
+      return
+    }
+
+    requestedNextPageForCountRef.current = episodes.length
+    void onLoadMore()
+  }, [
+    episodes.length,
+    hasMoreEpisodes,
+    isEndScreenVisible,
+    isLoadingMore,
+    nextEpisode,
+    onLoadMore,
+  ])
+
+  const performEndAction = useCallback(() => {
+    if (nextEpisode) {
+      setIsEndScreenDismissed(true)
+      onEpisodeSelect(nextEpisode.id)
+      return
+    }
+
+    if (!hasMoreEpisodes && !isLoadingMore) {
+      setIsEndScreenDismissed(true)
+      onReturnToAnime()
+    }
+  }, [
+    hasMoreEpisodes,
+    isLoadingMore,
+    nextEpisode,
+    onEpisodeSelect,
+    onReturnToAnime,
+  ])
+
+  const cancelEndScreen = useCallback(() => {
+    setIsEndScreenDismissed(true)
+  }, [])
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (isTypingTarget(event.target)) {
+        return
+      }
+
+      if (isEndScreenVisible) {
+        switch (event.key.toLocaleLowerCase()) {
+          case " ":
+          case "enter":
+            event.preventDefault()
+            performEndAction()
+            break
+          case "escape":
+            event.preventDefault()
+            cancelEndScreen()
+            break
+        }
         return
       }
 
@@ -528,7 +635,16 @@ function WatchOverlay({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isPanelOpen, isSettingsOpen, onPanelClose, player, showControls])
+  }, [
+    cancelEndScreen,
+    isEndScreenVisible,
+    isPanelOpen,
+    isSettingsOpen,
+    onPanelClose,
+    performEndAction,
+    player,
+    showControls,
+  ])
 
   function openEpisodePanel() {
     setIsSettingsOpen(false)
@@ -711,33 +827,251 @@ function WatchOverlay({
           onLoadMore={onLoadMore}
         />
       )}
+
+      {isEndScreenVisible && (
+        <PlaybackEndScreen
+          key={currentEpisode?.id}
+          animeTitle={animeTitle}
+          nextEpisode={nextEpisode}
+          isResolvingNextEpisode={isResolvingNextEpisode}
+          onContinue={performEndAction}
+          onCancel={cancelEndScreen}
+        />
+      )}
+    </div>
+  )
+}
+
+function PlaybackEndScreen({
+  animeTitle,
+  nextEpisode,
+  isResolvingNextEpisode,
+  onContinue,
+  onCancel,
+}: {
+  animeTitle: string
+  nextEpisode?: Episode
+  isResolvingNextEpisode: boolean
+  onContinue: () => void
+  onCancel: () => void
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(5)
+  const actionStartedRef = useRef(false)
+  const isLastEpisode = !nextEpisode && !isResolvingNextEpisode
+
+  const runAction = useCallback(() => {
+    if (actionStartedRef.current || isResolvingNextEpisode) {
+      return
+    }
+
+    actionStartedRef.current = true
+    onContinue()
+  }, [isResolvingNextEpisode, onContinue])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSecondsLeft((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (secondsLeft === 0) {
+      runAction()
+    }
+  }, [runAction, secondsLeft])
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={isLastEpisode ? "Просмотр завершён" : "Следующий эпизод"}
+      className="absolute inset-0 z-[60] flex items-center justify-center bg-black/85 px-5 text-center backdrop-blur-[2px]"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="flex max-w-lg flex-col items-center drop-shadow-2xl">
+        <button
+          type="button"
+          aria-label={isLastEpisode ? "Вернуться на страницу аниме" : "Включить следующую серию"}
+          disabled={isResolvingNextEpisode}
+          className="group relative flex size-24 items-center justify-center rounded-full transition hover:scale-105 disabled:cursor-wait disabled:opacity-70 sm:size-28"
+          onClick={runAction}
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 100 100"
+            className="absolute inset-0 -rotate-90 overflow-visible"
+          >
+            <circle
+              cx="50"
+              cy="50"
+              r="48"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              className="text-white/20"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="48"
+              pathLength="100"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray="100"
+              className="anime-player-end-countdown text-white/90"
+            />
+          </svg>
+          <span className="absolute inset-[3px] rounded-full bg-zinc-900/95" />
+          <span className="relative flex size-[70%] items-center justify-center rounded-full bg-white/5 transition group-hover:bg-white/10">
+            {isResolvingNextEpisode ? (
+              <Loader2 className="size-8 animate-spin text-white/85" />
+            ) : isLastEpisode ? (
+              <ArrowLeft className="size-8 text-white" />
+            ) : (
+              <Play className="ml-1 size-8 fill-current text-white" />
+            )}
+          </span>
+        </button>
+
+        <p className="mt-4 text-xl font-extrabold sm:text-2xl">
+          {nextEpisode
+            ? `Эпизод ${nextEpisode.number}`
+            : isResolvingNextEpisode
+              ? "Следующий эпизод"
+              : "Просмотр завершён"}
+        </p>
+        <p className="mt-1 text-sm font-semibold text-white/75 sm:text-base">
+          {nextEpisode?.name ||
+            (isResolvingNextEpisode
+              ? "Подготавливаем следующую серию..."
+              : "Возвращаемся на страницу аниме")}
+        </p>
+        <p className="mt-1 max-w-full truncate text-xs text-white/45">{animeTitle}</p>
+        <p className="mt-4 text-xs font-semibold text-white/50">
+          {isResolvingNextEpisode && secondsLeft === 0
+            ? "Подготавливаем переход..."
+            : `Через ${secondsLeft} сек.`}
+        </p>
+        <button
+          type="button"
+          className="mt-4 rounded-full px-4 py-2 text-xs font-semibold text-white/45 transition hover:bg-white/10 hover:text-white"
+          onClick={onCancel}
+        >
+          Отмена
+        </button>
+      </div>
     </div>
   )
 }
 
 function PlayerProgress({ player }: { player: ShakaVideoController }) {
+  const pointerSeekingRef = useRef(false)
+  const [previewTime, setPreviewTime] = useState<number | null>(null)
+  const [hoverPosition, setHoverPosition] = useState<{
+    percent: number
+    time: number
+  } | null>(null)
   const duration = Math.max(player.duration, 0)
-  const playedPercent = duration ? (player.currentTime / duration) * 100 : 0
+  const displayedTime = previewTime ?? player.currentTime
+  const playedPercent = duration ? (displayedTime / duration) * 100 : 0
   const bufferedPercent = duration
     ? Math.max(playedPercent, (player.bufferedEnd / duration) * 100)
     : 0
   const style = {
     "--played-percent": `${Math.min(playedPercent, 100)}%`,
     "--buffered-percent": `${Math.min(bufferedPercent, 100)}%`,
+    "--hover-percent": `${hoverPosition?.percent ?? 0}%`,
   } as CSSProperties
 
+  function updateHoverPosition(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.pointerType === "touch" || duration === 0) {
+      setHoverPosition(null)
+      return
+    }
+
+    const bounds = event.currentTarget.getBoundingClientRect()
+    const percent = Math.max(0, Math.min((event.clientX - bounds.left) / bounds.width, 1))
+    setHoverPosition({ percent: percent * 100, time: percent * duration })
+  }
+
+  function handleProgressChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const time = Number(event.target.value)
+
+    if (pointerSeekingRef.current) {
+      setPreviewTime(time)
+      return
+    }
+
+    player.seekTo(time)
+  }
+
+  function handlePointerDown(event: React.PointerEvent<HTMLInputElement>) {
+    pointerSeekingRef.current = true
+    setPreviewTime(Number(event.currentTarget.value))
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLInputElement>) {
+    const time = Number(event.currentTarget.value)
+    pointerSeekingRef.current = false
+    player.seekTo(time)
+    setPreviewTime(null)
+  }
+
+  function handlePointerCancel() {
+    pointerSeekingRef.current = false
+    setPreviewTime(null)
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+      return
+    }
+
+    event.preventDefault()
+    player.seekTo(player.currentTime + (event.key === "ArrowLeft" ? -10 : 10))
+  }
+
   return (
-    <input
-      type="range"
-      min="0"
-      max={duration || 0}
-      step="0.1"
-      value={Math.min(player.currentTime, duration || 0)}
-      aria-label="Позиция воспроизведения"
-      className="anime-player-progress w-full"
-      style={style}
-      onChange={(event) => player.seekTo(Number(event.target.value))}
-    />
+    <div
+      className="anime-player-progress-area relative h-5 w-full"
+      onPointerEnter={updateHoverPosition}
+      onPointerMove={updateHoverPosition}
+      onPointerLeave={() => setHoverPosition(null)}
+    >
+      {hoverPosition && (
+        <span
+          className="anime-player-progress-tooltip"
+          style={{
+            left: `clamp(2.25rem, ${hoverPosition.percent}%, calc(100% - 2.25rem))`,
+          }}
+        >
+          {formatPlayerTime(hoverPosition.time)}
+        </span>
+      )}
+      <div className="anime-player-progress-track" style={style} />
+      <input
+        type="range"
+        min="0"
+        max={duration || 0}
+        step="0.1"
+        value={Math.min(displayedTime, duration || 0)}
+        aria-label="Позиция воспроизведения"
+        className="anime-player-progress absolute inset-0 h-full w-full"
+        disabled={duration === 0}
+        onChange={handleProgressChange}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={handlePointerCancel}
+        onKeyDown={handleKeyDown}
+      />
+    </div>
   )
 }
 
@@ -1143,9 +1477,17 @@ function sortEpisodes(episodes: Episode[]) {
   )
 }
 
-function getEffectiveVideo(videos: EpisodeVideo[], selectedId: string | null) {
+function getEffectiveVideo(
+  videos: EpisodeVideo[],
+  selectedId: string | null,
+  preferredVoiceoverName: string | null,
+) {
   return (
     videos.find((video) => video.id === selectedId && isPlayableVideo(video)) ??
+    videos.find(
+      (video) =>
+        (video.voiceoverName ?? "") === preferredVoiceoverName && isPlayableVideo(video),
+    ) ??
     videos.find(isPlayableVideo)
   )
 }
