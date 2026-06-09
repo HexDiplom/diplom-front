@@ -36,6 +36,7 @@ export type ShakaVideoController = {
   status: PlayerStatus
   loadedManifestUrl: string | null
   isPlaying: boolean
+  isEnded: boolean
   isBuffering: boolean
   currentTime: number
   duration: number
@@ -76,6 +77,7 @@ type ShakaVideoProps = {
 type PlaybackState = Pick<
   ShakaVideoController,
   | "isPlaying"
+  | "isEnded"
   | "isBuffering"
   | "currentTime"
   | "duration"
@@ -95,6 +97,7 @@ type PlaybackState = Pick<
 
 const initialPlaybackState: PlaybackState = {
   isPlaying: false,
+  isEnded: false,
   isBuffering: false,
   currentTime: 0,
   duration: 0,
@@ -150,6 +153,7 @@ export default function ShakaVideo({
     setPlayback((current) => ({
       ...current,
       isPlaying: !video.paused && !video.ended,
+      isEnded: video.ended,
       currentTime: Number.isFinite(video.currentTime) ? video.currentTime : 0,
       duration: Number.isFinite(video.duration) ? video.duration : 0,
       bufferedEnd: getBufferedEnd(video),

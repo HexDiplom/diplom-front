@@ -31,7 +31,7 @@ import {
   VolumeX,
   X,
 } from "lucide-react"
-import { Link, useParams, useSearchParams } from "react-router"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 
 import type { Anime, Episode, EpisodeVideo, ListResponse } from "@/api/anime"
 import {
@@ -55,11 +55,13 @@ type PlaybackSnapshot = {
 
 export default function AnimeWatchPage() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { data: session, isPending: isSessionPending } = authClient.useSession()
   const validId = id && /^\d+$/.test(id) ? id : undefined
   const isAuthenticated = Boolean(session?.user)
   const animeQuery = useAnimeDetail(validId)
   const episodesQuery = useAnimeEpisodes(validId)
+  const fetchNextEpisodesPage = episodesQuery.fetchNextPage
   const historyQuery = useWatchHistory(isAuthenticated)
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null)
@@ -163,6 +165,10 @@ export default function AnimeWatchPage() {
     }
   }
 
+  const loadMoreEpisodes = useCallback(async () => {
+    await fetchNextEpisodesPage()
+  }, [fetchNextEpisodesPage])
+
   if (!validId) {
     return <WatchError text="ID аниме в адресе должен быть числом." />
   }
@@ -232,7 +238,8 @@ export default function AnimeWatchPage() {
                 onPanelClose={() => setIsEpisodePanelOpen(false)}
                 onEpisodeSelect={selectEpisode}
                 onVideoSelect={selectVideo}
-                onLoadMore={() => episodesQuery.fetchNextPage()}
+                onLoadMore={loadMoreEpisodes}
+                onReturnToAnime={() => navigate(`/anime/${validId}`)}
               />
             </>
           )}
@@ -447,6 +454,7 @@ function WatchOverlay({
   onEpisodeSelect,
   onVideoSelect,
   onLoadMore,
+  onReturnToAnime,
 }: {
   player: ShakaVideoController
   animeId: string
@@ -467,12 +475,22 @@ function WatchOverlay({
   onPanelClose: () => void
   onEpisodeSelect: (id: string) => void
   onVideoSelect: (id: string) => void
-  onLoadMore: () => void
+  onLoadMore: () => Promise<void>
+  onReturnToAnime: () => void
 }) {
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestedNextPageForCountRef = useRef<number | null>(null)
   const [isControlsVisible, setIsControlsVisible] = useState(true)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const controlsLocked = !player.isPlaying || player.isBuffering || isPanelOpen || isSettingsOpen
+  const [isEndScreenDismissed, setIsEndScreenDismissed] = useState(false)
+  const isEndScreenVisible = player.isEnded && !isEndScreenDismissed
+  const isResolvingNextEpisode = !nextEpisode && (hasMoreEpisodes || isLoadingMore)
+  const controlsLocked =
+    !player.isPlaying ||
+    player.isBuffering ||
+    isPanelOpen ||
+    isSettingsOpen ||
+    isEndScreenVisible
   const controlsShown = controlsLocked || isControlsVisible
 
   const clearHideTimer = useCallback(() => {
@@ -506,8 +524,80 @@ function WatchOverlay({
   }, [clearHideTimer, controlsLocked, scheduleHide])
 
   useEffect(() => {
+    if (!player.isEnded && isEndScreenDismissed) {
+      queueMicrotask(() => setIsEndScreenDismissed(false))
+    }
+  }, [isEndScreenDismissed, player.isEnded])
+
+  useEffect(() => {
+    if (!isEndScreenVisible) {
+      requestedNextPageForCountRef.current = null
+    }
+  }, [isEndScreenVisible])
+
+  useEffect(() => {
+    if (
+      !isEndScreenVisible ||
+      nextEpisode ||
+      !hasMoreEpisodes ||
+      isLoadingMore ||
+      requestedNextPageForCountRef.current === episodes.length
+    ) {
+      return
+    }
+
+    requestedNextPageForCountRef.current = episodes.length
+    void onLoadMore()
+  }, [
+    episodes.length,
+    hasMoreEpisodes,
+    isEndScreenVisible,
+    isLoadingMore,
+    nextEpisode,
+    onLoadMore,
+  ])
+
+  const performEndAction = useCallback(() => {
+    if (nextEpisode) {
+      setIsEndScreenDismissed(true)
+      onEpisodeSelect(nextEpisode.id)
+      return
+    }
+
+    if (!hasMoreEpisodes && !isLoadingMore) {
+      setIsEndScreenDismissed(true)
+      onReturnToAnime()
+    }
+  }, [
+    hasMoreEpisodes,
+    isLoadingMore,
+    nextEpisode,
+    onEpisodeSelect,
+    onReturnToAnime,
+  ])
+
+  const cancelEndScreen = useCallback(() => {
+    setIsEndScreenDismissed(true)
+  }, [])
+
+  useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (isTypingTarget(event.target)) {
+        return
+      }
+
+      if (isEndScreenVisible) {
+        switch (event.key.toLocaleLowerCase()) {
+          case " ":
+          case "enter":
+            event.preventDefault()
+            performEndAction()
+            break
+          case "escape":
+            event.preventDefault()
+            cancelEndScreen()
+            break
+        }
         return
       }
 
@@ -545,7 +635,16 @@ function WatchOverlay({
 
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isPanelOpen, isSettingsOpen, onPanelClose, player, showControls])
+  }, [
+    cancelEndScreen,
+    isEndScreenVisible,
+    isPanelOpen,
+    isSettingsOpen,
+    onPanelClose,
+    performEndAction,
+    player,
+    showControls,
+  ])
 
   function openEpisodePanel() {
     setIsSettingsOpen(false)
@@ -728,6 +827,125 @@ function WatchOverlay({
           onLoadMore={onLoadMore}
         />
       )}
+
+      {isEndScreenVisible && (
+        <PlaybackEndScreen
+          key={currentEpisode?.id}
+          animeTitle={animeTitle}
+          nextEpisode={nextEpisode}
+          isResolvingNextEpisode={isResolvingNextEpisode}
+          onContinue={performEndAction}
+          onCancel={cancelEndScreen}
+        />
+      )}
+    </div>
+  )
+}
+
+function PlaybackEndScreen({
+  animeTitle,
+  nextEpisode,
+  isResolvingNextEpisode,
+  onContinue,
+  onCancel,
+}: {
+  animeTitle: string
+  nextEpisode?: Episode
+  isResolvingNextEpisode: boolean
+  onContinue: () => void
+  onCancel: () => void
+}) {
+  const [secondsLeft, setSecondsLeft] = useState(5)
+  const actionStartedRef = useRef(false)
+  const isLastEpisode = !nextEpisode && !isResolvingNextEpisode
+  const progress = ((5 - secondsLeft) / 5) * 100
+
+  const runAction = useCallback(() => {
+    if (actionStartedRef.current || isResolvingNextEpisode) {
+      return
+    }
+
+    actionStartedRef.current = true
+    onContinue()
+  }, [isResolvingNextEpisode, onContinue])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setSecondsLeft((current) => Math.max(0, current - 1))
+    }, 1000)
+
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
+    if (secondsLeft === 0) {
+      runAction()
+    }
+  }, [runAction, secondsLeft])
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={isLastEpisode ? "Просмотр завершён" : "Следующий эпизод"}
+      className="absolute inset-0 z-[60] flex items-center justify-center bg-black/85 px-5 text-center backdrop-blur-[2px]"
+      onClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
+      <div className="flex max-w-lg flex-col items-center drop-shadow-2xl">
+        <button
+          type="button"
+          aria-label={isLastEpisode ? "Вернуться на страницу аниме" : "Включить следующую серию"}
+          disabled={isResolvingNextEpisode}
+          className="group relative flex size-24 items-center justify-center rounded-full transition hover:scale-105 disabled:cursor-wait disabled:opacity-70 sm:size-28"
+          onClick={runAction}
+        >
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 rounded-full"
+            style={{
+              background: `conic-gradient(rgb(255 255 255 / 0.9) ${progress}%, rgb(255 255 255 / 0.18) 0)`,
+            }}
+          />
+          <span className="absolute inset-[3px] rounded-full bg-zinc-900/95" />
+          <span className="relative flex size-[70%] items-center justify-center rounded-full bg-white/5 transition group-hover:bg-white/10">
+            {isResolvingNextEpisode ? (
+              <Loader2 className="size-8 animate-spin text-white/85" />
+            ) : isLastEpisode ? (
+              <ArrowLeft className="size-8 text-white" />
+            ) : (
+              <Play className="ml-1 size-8 fill-current text-white" />
+            )}
+          </span>
+        </button>
+
+        <p className="mt-4 text-xl font-extrabold sm:text-2xl">
+          {nextEpisode
+            ? `Эпизод ${nextEpisode.number}`
+            : isResolvingNextEpisode
+              ? "Следующий эпизод"
+              : "Просмотр завершён"}
+        </p>
+        <p className="mt-1 text-sm font-semibold text-white/75 sm:text-base">
+          {nextEpisode?.name ||
+            (isResolvingNextEpisode
+              ? "Подготавливаем следующую серию..."
+              : "Возвращаемся на страницу аниме")}
+        </p>
+        <p className="mt-1 max-w-full truncate text-xs text-white/45">{animeTitle}</p>
+        <p className="mt-4 text-xs font-semibold text-white/50">
+          {isResolvingNextEpisode && secondsLeft === 0
+            ? "Подготавливаем переход..."
+            : `Через ${secondsLeft} сек.`}
+        </p>
+        <button
+          type="button"
+          className="mt-4 rounded-full px-4 py-2 text-xs font-semibold text-white/45 transition hover:bg-white/10 hover:text-white"
+          onClick={onCancel}
+        >
+          Отмена
+        </button>
+      </div>
     </div>
   )
 }
