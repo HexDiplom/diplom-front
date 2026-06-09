@@ -15,11 +15,14 @@ import { authClient } from "@/lib/auth-client"
 import { toast } from "sonner"
 import { getAuthErrorMessage } from "@/lib/auth-errors"
 import { getAuthReturnPath } from "@/lib/auth-return"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 
 export function LoginForm({
   className,
   ...props
 }: React.ComponentProps<"div">) {
+  useDocumentTitle("Авторизация")
+
   const navigate = useNavigate()
   const location = useLocation()
 

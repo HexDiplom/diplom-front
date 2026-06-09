@@ -6,6 +6,7 @@ import type { Anime } from "@/api/anime"
 import type { ContinueWatchingItem } from "@/api/user-activity"
 import { AnimeCard, AnimeGridSkeleton } from "@/components/anime-card"
 import { Button } from "@/components/ui/button"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useInfiniteAnimeList } from "@/hooks/use-anime-list"
 import { useContinueWatching } from "@/hooks/use-user-activity"
 import { authClient } from "@/lib/auth-client"
@@ -14,6 +15,8 @@ import { getAnimeTitle } from "@/lib/anime"
 const ANIME_PAGE_SIZE = 5
 
 export default function Home() {
+  useDocumentTitle("Главная")
+
   const { data: session } = authClient.useSession()
   const continueQuery = useContinueWatching(Boolean(session?.user))
   const queryParams = useMemo(

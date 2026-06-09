@@ -48,6 +48,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useAnimeFilterOptions, useAnimeList } from "@/hooks/use-anime-list"
 import { cn } from "@/lib/utils"
 
@@ -93,6 +94,8 @@ const sortOptions: Array<{
 ]
 
 export default function CatalogPage() {
+  useDocumentTitle("Каталог аниме")
+
   const [searchParams, setSearchParams] = useSearchParams()
   const filterOptionsQuery = useAnimeFilterOptions()
   const search = searchParams.get("search") ?? ""

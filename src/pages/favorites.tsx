@@ -6,10 +6,13 @@ import { toast } from "sonner"
 import { deleteFavorite, type FavoriteItem } from "@/api/user-activity"
 import { Button } from "@/components/ui/button"
 import { useAuthPrompt } from "@/hooks/use-auth-prompt"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { useInfiniteFavorites, userActivityKeys } from "@/hooks/use-user-activity"
 import { authClient } from "@/lib/auth-client"
 
 export default function FavoritesPage() {
+  useDocumentTitle("Избранное")
+
   const { data: session, isPending: isSessionPending } = authClient.useSession()
   const { openAuthPrompt } = useAuthPrompt()
   const queryClient = useQueryClient()

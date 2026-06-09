@@ -10,6 +10,7 @@ import { FileUploadForm } from "@/components/admin/file-upload-form"
 import { ImageFileField, TextField } from "@/components/admin/form-fields"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { formatDateTime, inputToNullableList, listToInput, nullableNumber, nullableString } from "@/lib/admin-form"
 
 type TitleForm = {
@@ -79,6 +80,11 @@ export default function AdminAnimeDetailPage() {
     queryFn: () => adminApi.getAnime(id ?? ""),
     enabled: Boolean(id),
   })
+  useDocumentTitle(
+    animeQuery.data
+      ? `${getAnimeTitle(animeQuery.data)} — Админ-панель`
+      : "Аниме — Админ-панель",
+  )
 
   const trailersQuery = useQuery({
     queryKey: ["admin-anime", "trailers", id],

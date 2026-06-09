@@ -2,6 +2,7 @@ import { adminApi, type Studio, type StudioPayload } from "@/api/admin"
 import { FileUploadForm } from "@/components/admin/file-upload-form"
 import { ImageFileField, TextField } from "@/components/admin/form-fields"
 import { AdminResourcePage, type ResourceFormProps } from "@/components/admin/resource-page"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { formatDateTime, nullableString } from "@/lib/admin-form"
 
 type StudioForm = {
@@ -15,6 +16,8 @@ const emptyStudioForm: StudioForm = {
 }
 
 export default function AdminStudiosPage() {
+  useDocumentTitle("Студии — Админ-панель")
+
   return (
     <AdminResourcePage<Studio, StudioForm, StudioPayload, StudioPayload>
       resourceKey="admin-studios"
