@@ -6,12 +6,17 @@
 }
 
 .anime-player-progress {
-  cursor: pointer;
   background: transparent;
+  pointer-events: none;
 }
 
 .anime-player-progress:disabled {
   cursor: default;
+}
+
+.anime-player-progress-area {
+  cursor: pointer;
+  touch-action: none;
 }
 
 .anime-player-progress-track {

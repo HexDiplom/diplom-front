@@ -971,6 +971,7 @@ function PlaybackEndScreen({
 
 function PlayerProgress({ player }: { player: ShakaVideoController }) {
   const pointerSeekingRef = useRef(false)
+  const pendingSeekTimeRef = useRef<number | null>(null)
   const [previewTime, setPreviewTime] = useState<number | null>(null)
   const [hoverPosition, setHoverPosition] = useState<{
     percent: number
@@ -988,43 +989,82 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
     "--hover-percent": `${hoverPosition?.percent ?? 0}%`,
   } as CSSProperties
 
+  function getTimeFromPointer(clientX: number, element: HTMLElement) {
+    const bounds = element.getBoundingClientRect()
+
+    if (bounds.width === 0 || duration === 0) {
+      return 0
+    }
+
+    const percent = Math.max(0, Math.min((clientX - bounds.left) / bounds.width, 1))
+    return percent * duration
+  }
+
   function updateHoverPosition(event: React.PointerEvent<HTMLDivElement>) {
     if (event.pointerType === "touch" || duration === 0) {
       setHoverPosition(null)
       return
     }
 
-    const bounds = event.currentTarget.getBoundingClientRect()
-    const percent = Math.max(0, Math.min((event.clientX - bounds.left) / bounds.width, 1))
-    setHoverPosition({ percent: percent * 100, time: percent * duration })
+    const time = getTimeFromPointer(event.clientX, event.currentTarget)
+    setHoverPosition({ percent: (time / duration) * 100, time })
   }
 
   function handleProgressChange(event: React.ChangeEvent<HTMLInputElement>) {
     const time = Number(event.target.value)
 
     if (pointerSeekingRef.current) {
-      setPreviewTime(time)
       return
     }
 
     player.seekTo(time)
   }
 
-  function handlePointerDown(event: React.PointerEvent<HTMLInputElement>) {
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (duration === 0 || (event.pointerType === "mouse" && event.button !== 0)) {
+      return
+    }
+
+    event.preventDefault()
+    const time = getTimeFromPointer(event.clientX, event.currentTarget)
     pointerSeekingRef.current = true
-    setPreviewTime(Number(event.currentTarget.value))
+    pendingSeekTimeRef.current = time
+    setPreviewTime(time)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  function handlePointerUp(event: React.PointerEvent<HTMLInputElement>) {
-    const time = Number(event.currentTarget.value)
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    updateHoverPosition(event)
+
+    if (!pointerSeekingRef.current) {
+      return
+    }
+
+    const time = getTimeFromPointer(event.clientX, event.currentTarget)
+    pendingSeekTimeRef.current = time
+    setPreviewTime(time)
+  }
+
+  function handlePointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    if (!pointerSeekingRef.current) {
+      return
+    }
+
+    pendingSeekTimeRef.current = getTimeFromPointer(event.clientX, event.currentTarget)
     pointerSeekingRef.current = false
-    player.seekTo(time)
+    const time = pendingSeekTimeRef.current
+    pendingSeekTimeRef.current = null
+
+    if (time !== null) {
+      player.seekTo(time)
+    }
+
     setPreviewTime(null)
   }
 
   function handlePointerCancel() {
     pointerSeekingRef.current = false
+    pendingSeekTimeRef.current = null
     setPreviewTime(null)
   }
 
@@ -1041,7 +1081,11 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
     <div
       className="anime-player-progress-area relative h-5 w-full"
       onPointerEnter={updateHoverPosition}
-      onPointerMove={updateHoverPosition}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
+      onLostPointerCapture={handlePointerCancel}
       onPointerLeave={() => setHoverPosition(null)}
     >
       {hoverPosition && (
@@ -1065,10 +1109,6 @@ function PlayerProgress({ player }: { player: ShakaVideoController }) {
         className="anime-player-progress absolute inset-0 h-full w-full"
         disabled={duration === 0}
         onChange={handleProgressChange}
-        onPointerDown={handlePointerDown}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerCancel}
-        onLostPointerCapture={handlePointerCancel}
         onKeyDown={handleKeyDown}
       />
     </div>
