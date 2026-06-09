@@ -858,7 +858,6 @@ function PlaybackEndScreen({
   const [secondsLeft, setSecondsLeft] = useState(5)
   const actionStartedRef = useRef(false)
   const isLastEpisode = !nextEpisode && !isResolvingNextEpisode
-  const progress = ((5 - secondsLeft) / 5) * 100
 
   const runAction = useCallback(() => {
     if (actionStartedRef.current || isResolvingNextEpisode) {
@@ -900,13 +899,33 @@ function PlaybackEndScreen({
           className="group relative flex size-24 items-center justify-center rounded-full transition hover:scale-105 disabled:cursor-wait disabled:opacity-70 sm:size-28"
           onClick={runAction}
         >
-          <span
+          <svg
             aria-hidden="true"
-            className="absolute inset-0 rounded-full"
-            style={{
-              background: `conic-gradient(rgb(255 255 255 / 0.9) ${progress}%, rgb(255 255 255 / 0.18) 0)`,
-            }}
-          />
+            viewBox="0 0 100 100"
+            className="absolute inset-0 -rotate-90 overflow-visible"
+          >
+            <circle
+              cx="50"
+              cy="50"
+              r="48"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              className="text-white/20"
+            />
+            <circle
+              cx="50"
+              cy="50"
+              r="48"
+              pathLength="100"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeDasharray="100"
+              className="anime-player-end-countdown text-white/90"
+            />
+          </svg>
           <span className="absolute inset-[3px] rounded-full bg-zinc-900/95" />
           <span className="relative flex size-[70%] items-center justify-center rounded-full bg-white/5 transition group-hover:bg-white/10">
             {isResolvingNextEpisode ? (
