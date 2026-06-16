@@ -6,7 +6,7 @@ import {
   FieldDescription,
   FieldGroup,
   FieldLabel,
-  FieldSeparator,
+  // FieldSeparator,
 } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Link, useLocation, useNavigate } from "react-router"
@@ -16,7 +16,7 @@ import { toast } from "sonner"
 import { getAuthErrorMessage } from "@/lib/auth-errors"
 import { getAuthReturnPath } from "@/lib/auth-return"
 import { useDocumentTitle } from "@/hooks/use-document-title"
-import { SocialAuthButtons } from "@/components/social-auth-buttons"
+// import { SocialAuthButtons } from "@/components/social-auth-buttons"
 
 export function LoginForm({
   className,
@@ -110,10 +110,10 @@ export function LoginForm({
               <Field>
                 <Button type="submit" disabled={isLoading}>{isLoading ? "Вход..." : "Войти"}</Button>
               </Field>
-              <FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
+              {/*<FieldSeparator className="*:data-[slot=field-separator-content]:bg-card">
                 или
-              </FieldSeparator>
-              <SocialAuthButtons callbackPath={from} disabled={isLoading} />
+              </FieldSeparator>*/}
+              {/*<SocialAuthButtons callbackPath={from} disabled={isLoading} />*/}
               <FieldDescription className="text-center">
                 Ещё нет аккаунта? <Link to="/auth/signup" state={location.state}>Регистрация</Link>
               </FieldDescription>
